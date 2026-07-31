@@ -1,0 +1,25 @@
+#!/bin/sh
+# Maven Wrapper script
+# This downloads and runs the correct Maven version automatically.
+# No need to install Maven manually.
+
+set -e
+
+MAVEN_WRAPPER_JAR=".mvn/wrapper/maven-wrapper.jar"
+MAVEN_WRAPPER_PROPERTIES=".mvn/wrapper/maven-wrapper.properties"
+
+# Read distribution URL
+distributionUrl=$(grep "distributionUrl" "$MAVEN_WRAPPER_PROPERTIES" | cut -d'=' -f2-)
+
+MAVEN_HOME="${HOME}/.m2/wrapper/dists/$(basename "$distributionUrl" .zip)"
+
+if [ ! -d "$MAVEN_HOME" ]; then
+    echo "Downloading Maven..."
+    mkdir -p "$MAVEN_HOME"
+    curl -sL "$distributionUrl" -o /tmp/maven.zip
+    unzip -q /tmp/maven.zip -d "$MAVEN_HOME"
+    rm /tmp/maven.zip
+fi
+
+MAVEN_BIN=$(find "$MAVEN_HOME" -name "mvn" -type f | head -1)
+exec "$MAVEN_BIN" "$@"

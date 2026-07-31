@@ -1,0 +1,21 @@
+package com.flowpay.exception;
+
+/**
+ * Machine-readable error codes for API clients.
+ */
+public enum ErrorCode {
+    VALIDATION_FAILED,
+    INVALID_AMOUNT,
+    INVALID_ACCOUNT,
+    INVALID_CURRENCY,
+    DUPLICATE_PAYMENT,
+    INVALID_STATUS_TRANSITION,
+    MAX_RETRY_EXCEEDED,
+    PAYMENT_NOT_FOUND,
+    USER_NOT_FOUND,
+    PROCESSING_ERROR,
+    AUTHENTICATION_FAILED,
+    DUPLICATE_RESOURCE,
+    SINGLE_USER_MODE,
+    INTERNAL_SERVER_ERROR
+}
