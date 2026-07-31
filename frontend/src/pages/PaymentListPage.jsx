@@ -80,6 +80,7 @@ export default function PaymentListPage() {
                 <th className="px-4 py-2 text-left">Amount</th>
                 <th className="px-4 py-2 text-left">Sender</th>
                 <th className="px-4 py-2 text-left">Receiver</th>
+                <th className="px-4 py-2 text-left">Comment</th>
                 <th className="px-4 py-2 text-left">Method</th>
                 <th className="px-4 py-2 text-left">Status</th>
                 <th className="px-4 py-2 text-left">Retries</th>
@@ -105,6 +106,9 @@ export default function PaymentListPage() {
                   <td className="px-4 py-2">{p.amount} {p.currency}</td>
                   <td className="px-4 py-2 text-gray-600">{p.senderAccount}</td>
                   <td className="px-4 py-2 text-gray-600">{p.receiverAccount}</td>
+                  <td className="px-4 py-2 text-gray-600 min-w-[220px] whitespace-normal break-words" title={p.purpose || ''}>
+                    {p.purpose || <span className="text-gray-400">-</span>}
+                  </td>
                   <td className="px-4 py-2">{p.paymentMethod}</td>
                   <td className="px-4 py-2">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor(p.status)}`}>

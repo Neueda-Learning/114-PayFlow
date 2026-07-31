@@ -13,3 +13,8 @@ export const paymentApi = {
   getHistory: (id) => api.get(`/payments/${id}/history`),
   retry: (id) => api.post(`/payments/${id}/retry`),
 };
+
+export const receivingAccountApi = {
+  get: () => api.get('/receiving-account'),
+  save: (data) => api.put('/receiving-account', data),
+};

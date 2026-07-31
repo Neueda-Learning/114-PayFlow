@@ -20,7 +20,8 @@ public class CreatePaymentRequest {
     @NotBlank(message = "Sender account is required")
     private String senderAccount;
 
-    @NotBlank(message = "Receiver account is required")
+    // Ignored if provided by the client; the server always overwrites this
+    // with the configured receiving account (see ReceivingAccountService).
     private String receiverAccount;
 
     @NotNull(message = "Payment method is required")
@@ -28,4 +29,18 @@ public class CreatePaymentRequest {
 
     @NotBlank(message = "Idempotency key is required")
     private String idempotencyKey;
+
+    @NotBlank(message = "Purpose is required")
+    @Size(max = 300, message = "Purpose must be at most 300 characters")
+    private String purpose;
+
+    // Card fields
+    private String cardHolderName;
+    private String cardExpiry;
+    private String cardCvv;
+
+    // Bank transfer fields
+    private String accountNumber;
+    private String ifscCode;
+    private String accountHolderName;
 }

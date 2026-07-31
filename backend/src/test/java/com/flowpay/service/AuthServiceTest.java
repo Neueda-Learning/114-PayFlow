@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -64,7 +65,9 @@ class AuthServiceTest {
 
         assertThat(response.getToken()).isEqualTo("jwt-token");
         assertThat(response.getEmail()).isEqualTo("test@example.com");
-        verify(userRepository).save(any(User.class));
+        assertThat(response.getBankAccountNumber()).startsWith("FP");
+        assertThat(response.getBankBalance()).isEqualByComparingTo(new BigDecimal("100000.00"));
+        verify(userRepository, atLeastOnce()).save(any(User.class));
     }
 
     @Test
@@ -98,6 +101,8 @@ class AuthServiceTest {
                 .fullName("Test User")
                 .password("hashed")
                 .role(Role.USER)
+            .bankAccountNumber("FP123456789012")
+            .bankBalance(new BigDecimal("99999.00"))
                 .build();
 
         when(authenticationManager.authenticate(any())).thenReturn(null);
@@ -108,6 +113,8 @@ class AuthServiceTest {
 
         assertThat(response.getToken()).isEqualTo("jwt-token");
         assertThat(response.getRole()).isEqualTo("USER");
+        assertThat(response.getBankAccountNumber()).isEqualTo("FP123456789012");
+        assertThat(response.getBankBalance()).isEqualByComparingTo(new BigDecimal("99999.00"));
     }
 
     @Test

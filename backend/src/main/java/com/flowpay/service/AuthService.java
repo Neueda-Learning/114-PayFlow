@@ -13,12 +13,17 @@ import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.util.concurrent.ThreadLocalRandom;
+
 /**
  * Handles user registration and login.
  */
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+        private static final BigDecimal INITIAL_BALANCE = new BigDecimal("100000.00");
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -45,9 +50,12 @@ public class AuthService {
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .role(Role.USER)
+                .bankAccountNumber(generateBankAccountNumber())
+                .bankBalance(INITIAL_BALANCE)
                 .build();
 
         userRepository.save(user);
+        ensureBankProfile(user);
 
         String token = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
 
@@ -56,6 +64,8 @@ public class AuthService {
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .role(user.getRole().name())
+                .bankAccountNumber(user.getBankAccountNumber())
+                .bankBalance(user.getBankBalance())
                 .build();
     }
 
@@ -67,6 +77,7 @@ public class AuthService {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BadRequestException(ErrorCode.VALIDATION_FAILED,
                         "User not found"));
+        ensureBankProfile(user);
 
         String token = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
 
@@ -75,6 +86,28 @@ public class AuthService {
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .role(user.getRole().name())
+                                .bankAccountNumber(user.getBankAccountNumber())
+                                .bankBalance(user.getBankBalance())
                 .build();
     }
+
+        private String generateBankAccountNumber() {
+                long suffix = ThreadLocalRandom.current().nextLong(100000000000L, 1000000000000L);
+                return "FP" + suffix;
+        }
+
+        private void ensureBankProfile(User user) {
+                boolean updated = false;
+                if (user.getBankAccountNumber() == null || user.getBankAccountNumber().isBlank()) {
+                        user.setBankAccountNumber(generateBankAccountNumber());
+                        updated = true;
+                }
+                if (user.getBankBalance() == null) {
+                        user.setBankBalance(INITIAL_BALANCE);
+                        updated = true;
+                }
+                if (updated) {
+                        userRepository.save(user);
+                }
+        }
 }

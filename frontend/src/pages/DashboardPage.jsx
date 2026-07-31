@@ -45,6 +45,13 @@ export default function DashboardPage() {
         Welcome back, {user?.fullName}
       </h1>
 
+      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-6">
+        <p className="text-sm text-gray-500">Bank Account</p>
+        <p className="text-base font-semibold text-gray-800">{user?.bankAccountNumber || '-'}</p>
+        <p className="text-sm text-gray-500 mt-2">Available Balance</p>
+        <p className="text-xl font-bold text-green-700">INR {user?.bankBalance ?? '-'}</p>
+      </div>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">

@@ -39,8 +39,21 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const updateUserBankData = ({ bankAccountNumber, bankBalance }) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        bankAccountNumber: bankAccountNumber ?? prev.bankAccountNumber,
+        bankBalance: bankBalance ?? prev.bankBalance,
+      };
+      localStorage.setItem('user', JSON.stringify(next));
+      return next;
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, register, logout, updateUserBankData, loading }}>
       {children}
     </AuthContext.Provider>
   );

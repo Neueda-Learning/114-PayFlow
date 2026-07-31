@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -25,8 +26,10 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentHistoryRepository historyRepository;
     private final UserRepository userRepository;
+    private final ReceivingAccountService receivingAccountService;
 
     private static final Set<String> SUPPORTED_CURRENCIES = Set.of("INR");
+    private static final BigDecimal INITIAL_BALANCE = new BigDecimal("100000.00");
     private static final int MAX_RETRIES = 3;
         private static final Map<PaymentStatus, Set<PaymentStatus>> VALID_TRANSITIONS = Map.of(
             PaymentStatus.CREATED, Set.of(PaymentStatus.VALIDATED, PaymentStatus.FAILED),
@@ -48,6 +51,11 @@ public class PaymentService {
             return toResponse(existing);
         }
 
+        // The receiver is always the configured receiving account, never a
+        // value supplied by the client — this prevents payments being
+        // redirected to an arbitrary account.
+        applyReceivingAccount(request);
+
         // Validate business rules
         validatePayment(request);
 
@@ -55,13 +63,20 @@ public class PaymentService {
             .orElseThrow(() -> new ResourceNotFoundException(
                 ErrorCode.USER_NOT_FOUND,
                 "User not found"));
+        ensureBankProfile(user);
 
         Payment payment = Payment.builder()
                 .idempotencyKey(request.getIdempotencyKey())
                 .amount(request.getAmount())
                 .currency(request.getCurrency().toUpperCase())
-                .senderAccount(request.getSenderAccount())
+                .senderAccount(maskIfCardNumber(request))
                 .receiverAccount(request.getReceiverAccount())
+                .purpose(request.getPurpose())
+                .cardHolderName(request.getCardHolderName())
+                .cardExpiry(request.getCardExpiry())
+                .accountNumber(request.getAccountNumber())
+                .ifscCode(request.getIfscCode())
+                .accountHolderName(request.getAccountHolderName())
                 .paymentMethod(request.getPaymentMethod())
                 .status(PaymentStatus.CREATED)
                 .user(user)
@@ -84,13 +99,13 @@ public class PaymentService {
     }
 
     public List<PaymentResponse> getAllPayments() {
-        return paymentRepository.findAll().stream()
+        return paymentRepository.findAllByOrderByCreatedAtDesc().stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     public List<PaymentResponse> getPaymentsByStatus(PaymentStatus status) {
-        return paymentRepository.findByStatus(status).stream()
+        return paymentRepository.findByStatusOrderByCreatedAtDesc(status).stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -151,6 +166,16 @@ public class PaymentService {
         boolean success = random.nextInt(100) < 70;
 
         if (success) {
+            if (!hasSufficientBalance(payment.getUser(), payment.getAmount())) {
+                payment.setFailureCode(ErrorCode.INSUFFICIENT_FUNDS.name());
+                payment.setFailureMessage("Insufficient balance in user bank account");
+                transition(payment, PaymentStatus.FAILED,
+                    "Payment failed due to insufficient funds", userEmail, TriggerType.SYSTEM);
+                return;
+            }
+
+            deductFromUserBalance(payment.getUser(), payment.getAmount());
+            receivingAccountService.creditBalance(payment.getAmount());
             transition(payment, PaymentStatus.COMPLETED,
                 "Payment processed successfully", userEmail, TriggerType.SYSTEM);
         } else {
@@ -187,6 +212,14 @@ public class PaymentService {
         validatePaymentMethod(request);
     }
 
+    /** Overwrites the request's receiver account with the configured receiving account. */
+    private void applyReceivingAccount(CreatePaymentRequest request) {
+        var receivingAccount = receivingAccountService.getReceivingAccount();
+        request.setReceiverAccount(request.getPaymentMethod() == PaymentMethod.UPI
+                ? receivingAccount.getUpiId()
+                : receivingAccount.getAccountNumber());
+    }
+
     private void validatePaymentMethod(CreatePaymentRequest request) {
         switch (request.getPaymentMethod()) {
             case CARD -> {
@@ -195,6 +228,19 @@ public class PaymentService {
                     throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
                             "Card number must be at least 10 digits");
                 }
+                if (isBlank(request.getCardHolderName())) {
+                    throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
+                            "Card holder name is required for card payments");
+                }
+                if (isBlank(request.getCardExpiry())
+                        || !request.getCardExpiry().matches("^(0[1-9]|1[0-2])/\\d{2}$")) {
+                    throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
+                            "Card expiry must be in MM/YY format");
+                }
+                if (isBlank(request.getCardCvv()) || !request.getCardCvv().matches("^\\d{3}$")) {
+                    throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
+                            "CVV must be exactly 3 digits");
+                }
             }
             case BANK_TRANSFER -> {
                 // Both accounts should look like account numbers
@@ -202,6 +248,19 @@ public class PaymentService {
                         || request.getReceiverAccount().length() < 6) {
                     throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
                             "Bank account numbers must be at least 6 characters");
+                }
+                if (isBlank(request.getAccountNumber())) {
+                    throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
+                            "Account number is required for bank transfer");
+                }
+                if (isBlank(request.getIfscCode())
+                        || !request.getIfscCode().toUpperCase().matches("^[A-Z]{4}0[A-Z0-9]{6}$")) {
+                    throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
+                            "IFSC code is invalid (example: HDFC0123456)");
+                }
+                if (isBlank(request.getAccountHolderName())) {
+                    throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
+                            "Account holder name is required for bank transfer");
                 }
             }
             case UPI -> {
@@ -212,6 +271,51 @@ public class PaymentService {
                             "UPI IDs must contain '@' (e.g., user@upi)");
                 }
             }
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    /**
+     * CVV is validated but never persisted (PCI-DSS: must not be stored after
+     * authorization). Card numbers are masked to only the last 4 digits before
+     * being saved, since the full PAN is not needed after validation.
+     */
+    private String maskIfCardNumber(CreatePaymentRequest request) {
+        String senderAccount = request.getSenderAccount();
+        if (request.getPaymentMethod() != PaymentMethod.CARD) {
+            return senderAccount;
+        }
+        if (senderAccount == null || senderAccount.length() < 4) {
+            return senderAccount;
+        }
+        String last4 = senderAccount.substring(senderAccount.length() - 4);
+        return "**** **** **** " + last4;
+    }
+
+    private boolean hasSufficientBalance(User user, BigDecimal amount) {
+        return user.getBankBalance().compareTo(amount) >= 0;
+    }
+
+    private void deductFromUserBalance(User user, BigDecimal amount) {
+        user.setBankBalance(user.getBankBalance().subtract(amount));
+        userRepository.save(user);
+    }
+
+    private void ensureBankProfile(User user) {
+        boolean updated = false;
+        if (user.getBankBalance() == null) {
+            user.setBankBalance(INITIAL_BALANCE);
+            updated = true;
+        }
+        if (user.getBankAccountNumber() == null || user.getBankAccountNumber().isBlank()) {
+            user.setBankAccountNumber("FP" + user.getId());
+            updated = true;
+        }
+        if (updated) {
+            userRepository.save(user);
         }
     }
 
@@ -263,10 +367,18 @@ public class PaymentService {
                 .currency(p.getCurrency())
                 .senderAccount(p.getSenderAccount())
                 .receiverAccount(p.getReceiverAccount())
+                .purpose(p.getPurpose())
+                .cardHolderName(p.getCardHolderName())
+                .cardExpiry(p.getCardExpiry())
+                .accountNumber(p.getAccountNumber())
+                .ifscCode(p.getIfscCode())
+                .accountHolderName(p.getAccountHolderName())
                 .paymentMethod(p.getPaymentMethod())
                 .status(p.getStatus())
                 .failureCode(p.getFailureCode())
                 .failureMessage(p.getFailureMessage())
+                .userBankAccountNumber(p.getUser().getBankAccountNumber())
+                .userBankBalance(p.getUser().getBankBalance())
                 .retryCount(p.getRetryCount())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())

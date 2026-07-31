@@ -1,7 +1,9 @@
 package com.flowpay.model;
 
+import com.flowpay.security.EncryptedStringConverter;
 import jakarta.persistence.*;
 import lombok.*;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -31,6 +33,12 @@ public class User {
     @Column(nullable = false)
     private Role role;
 
+    @Convert(converter = EncryptedStringConverter.class)
+    private String bankAccountNumber;
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal bankBalance;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -39,6 +47,9 @@ public class User {
         this.createdAt = LocalDateTime.now();
         if (this.role == null) {
             this.role = Role.USER;
+        }
+        if (this.bankBalance == null) {
+            this.bankBalance = new BigDecimal("100000.00");
         }
     }
 }
