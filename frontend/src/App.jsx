@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage';
 import CreatePaymentPage from './pages/CreatePaymentPage';
 import PaymentListPage from './pages/PaymentListPage';
 import PaymentDetailPage from './pages/PaymentDetailPage';
+import ReceivingAccountPage from './pages/ReceivingAccountPage';
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/payments" element={<ProtectedRoute><PaymentListPage /></ProtectedRoute>} />
           <Route path="/payments/create" element={<ProtectedRoute><CreatePaymentPage /></ProtectedRoute>} />
           <Route path="/payments/:id" element={<ProtectedRoute><PaymentDetailPage /></ProtectedRoute>} />
+          <Route path="/receiving-account" element={<ProtectedRoute><ReceivingAccountPage /></ProtectedRoute>} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

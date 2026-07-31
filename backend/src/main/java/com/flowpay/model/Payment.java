@@ -1,5 +1,6 @@
 package com.flowpay.model;
 
+import com.flowpay.security.EncryptedStringConverter;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -36,6 +37,24 @@ public class Payment {
 
     @Column(nullable = false)
     private String receiverAccount;
+
+    @Column(nullable = false, length = 300)
+    private String purpose;
+
+    // Card fields (used when paymentMethod=CARD)
+    private String cardHolderName;
+    private String cardExpiry;
+    // NOTE: CVV is intentionally never persisted (PCI-DSS: CVV must not be stored
+    // after authorization). It is validated in PaymentService and then discarded.
+
+    // Bank transfer fields (used when paymentMethod=BANK_TRANSFER)
+    @Convert(converter = EncryptedStringConverter.class)
+    private String accountNumber;
+
+    @Convert(converter = EncryptedStringConverter.class)
+    private String ifscCode;
+
+    private String accountHolderName;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

@@ -74,6 +74,8 @@ export default function PaymentDetailPage() {
     { label: 'Failed At', value: getLatestStatusTimestamp('FAILED') },
   ];
 
+  const paymentComment = payment?.purpose || payment?.comment || payment?.description || '-';
+
   if (loading) return <div className="text-center py-8 text-gray-400">Loading...</div>;
   if (!payment) return <div className="text-center py-8 text-red-500">{error || 'Payment not found'}</div>;
 
@@ -102,6 +104,11 @@ export default function PaymentDetailPage() {
 
       {/* Payment Details */}
       <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mb-6">
+        <div className="mb-4 rounded-md border border-indigo-100 bg-indigo-50 p-3">
+          <p className="text-xs text-indigo-500 uppercase">Purpose / Comment</p>
+          <p className="text-sm text-indigo-900 font-medium">{paymentComment}</p>
+        </div>
+
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <p className="text-xs text-gray-400 uppercase">Amount</p>
@@ -126,9 +133,52 @@ export default function PaymentDetailPage() {
             <p className="text-sm text-gray-700">{payment.receiverAccount}</p>
           </div>
           <div>
+            <p className="text-xs text-gray-400 uppercase">User Bank Account</p>
+            <p className="text-sm text-gray-700">{payment.userBankAccountNumber || '-'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 uppercase">Remaining Balance</p>
+            <p className="text-sm font-semibold text-green-700">INR {payment.userBankBalance ?? '-'}</p>
+          </div>
+          <div>
             <p className="text-xs text-gray-400 uppercase">Retries</p>
             <p className="text-sm text-gray-700">{payment.retryCount} / 3</p>
           </div>
+
+          {payment.paymentMethod === 'CARD' && (
+            <>
+              <div>
+                <p className="text-xs text-gray-400 uppercase">Card Holder</p>
+                <p className="text-sm text-gray-700">{payment.cardHolderName || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase">Card Expiry</p>
+                <p className="text-sm text-gray-700">{payment.cardExpiry || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase">Card Number</p>
+                <p className="text-sm text-gray-700">{payment.senderAccount || '-'}</p>
+              </div>
+            </>
+          )}
+
+          {payment.paymentMethod === 'BANK_TRANSFER' && (
+            <>
+              <div>
+                <p className="text-xs text-gray-400 uppercase">Account Number</p>
+                <p className="text-sm text-gray-700">{payment.accountNumber || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase">IFSC</p>
+                <p className="text-sm text-gray-700">{payment.ifscCode || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase">Account Holder</p>
+                <p className="text-sm text-gray-700">{payment.accountHolderName || '-'}</p>
+              </div>
+            </>
+          )}
+
           {payment.failureCode && (
             <>
               <div>

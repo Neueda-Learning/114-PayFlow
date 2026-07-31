@@ -2,6 +2,7 @@ package com.flowpay.service;
 
 import com.flowpay.dto.CreatePaymentRequest;
 import com.flowpay.dto.PaymentResponse;
+import com.flowpay.dto.ReceivingAccountResponse;
 import com.flowpay.exception.BadRequestException;
 import com.flowpay.exception.DuplicateResourceException;
 import com.flowpay.exception.ResourceNotFoundException;
@@ -30,6 +31,7 @@ class PaymentServiceTest {
     @Mock private PaymentRepository paymentRepository;
     @Mock private PaymentHistoryRepository historyRepository;
     @Mock private UserRepository userRepository;
+    @Mock private ReceivingAccountService receivingAccountService;
 
     @InjectMocks private PaymentService paymentService;
 
@@ -43,6 +45,8 @@ class PaymentServiceTest {
                 .email("test@example.com")
                 .fullName("Test User")
                 .role(Role.USER)
+            .bankAccountNumber("FP123456789012")
+            .bankBalance(new BigDecimal("100000.00"))
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -51,8 +55,18 @@ class PaymentServiceTest {
         validRequest.setCurrency("INR");
         validRequest.setSenderAccount("1234567890");
         validRequest.setReceiverAccount("0987654321");
+        validRequest.setPurpose("Monthly rent payment");
         validRequest.setPaymentMethod(PaymentMethod.CARD);
+        validRequest.setCardHolderName("Test User");
+        validRequest.setCardExpiry("08/30");
+        validRequest.setCardCvv("123");
         validRequest.setIdempotencyKey("test-key-001");
+
+        lenient().when(receivingAccountService.getReceivingAccount()).thenReturn(
+                ReceivingAccountResponse.builder()
+                        .accountNumber("0987654321")
+                        .upiId("receiver@upi")
+                        .build());
     }
 
     // ──────── Create Payment Tests ────────
@@ -80,6 +94,7 @@ class PaymentServiceTest {
             assertThat(response).isNotNull();
             assertThat(response.getAmount()).isEqualByComparingTo(new BigDecimal("100.00"));
             assertThat(response.getCurrency()).isEqualTo("INR");
+            assertThat(response.getPurpose()).isEqualTo("Monthly rent payment");
             assertThat(response.getStatus()).isIn(PaymentStatus.COMPLETED, PaymentStatus.FAILED);
             verify(paymentRepository, atLeastOnce()).save(any(Payment.class));
         }
@@ -94,8 +109,10 @@ class PaymentServiceTest {
                     .currency("INR")
                     .senderAccount("1234567890")
                     .receiverAccount("0987654321")
+                    .purpose("Monthly rent payment")
                     .paymentMethod(PaymentMethod.CARD)
                     .status(PaymentStatus.COMPLETED)
+                    .user(testUser)
                     .createdAt(LocalDateTime.now())
                     .build();
 
@@ -131,8 +148,9 @@ class PaymentServiceTest {
         @Test
         @DisplayName("should reject same sender and receiver")
         void shouldRejectSameSenderReceiver() {
-            validRequest.setSenderAccount("1234567890");
-            validRequest.setReceiverAccount("1234567890");
+            // The receiver is always the configured receiving account, so this
+            // triggers the same-account rejection when the sender matches it.
+            validRequest.setSenderAccount("0987654321");
             when(paymentRepository.existsByIdempotencyKey(anyString())).thenReturn(false);
 
             assertThatThrownBy(() ->
@@ -146,7 +164,6 @@ class PaymentServiceTest {
         void shouldRejectInvalidUpi() {
             validRequest.setPaymentMethod(PaymentMethod.UPI);
             validRequest.setSenderAccount("invalidupi");
-            validRequest.setReceiverAccount("alsoinvalid");
             when(paymentRepository.existsByIdempotencyKey(anyString())).thenReturn(false);
 
             assertThatThrownBy(() ->
@@ -181,6 +198,7 @@ class PaymentServiceTest {
             Payment payment = Payment.builder()
                     .id(1L)
                     .status(PaymentStatus.COMPLETED)
+                    .user(testUser)
                     .build();
             when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
 
@@ -196,6 +214,7 @@ class PaymentServiceTest {
                     .id(1L)
                     .status(PaymentStatus.FAILED)
                     .retryCount(3)
+                    .user(testUser)
                     .build();
             when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
 
@@ -214,9 +233,11 @@ class PaymentServiceTest {
                     .currency("INR")
                     .senderAccount("1234567890")
                     .receiverAccount("0987654321")
+                    .purpose("Utility bill")
                     .paymentMethod(PaymentMethod.CARD)
                     .status(PaymentStatus.FAILED)
                     .retryCount(1)
+                    .user(testUser)
                     .createdAt(LocalDateTime.now())
                     .build();
 
@@ -250,7 +271,7 @@ class PaymentServiceTest {
         @Test
         @DisplayName("should return all payments")
         void shouldReturnAllPayments() {
-            when(paymentRepository.findAll()).thenReturn(List.of());
+            when(paymentRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of());
 
             List<PaymentResponse> result = paymentService.getAllPayments();
             assertThat(result).isEmpty();
@@ -259,13 +280,13 @@ class PaymentServiceTest {
         @Test
         @DisplayName("should filter payments by status")
         void shouldFilterByStatus() {
-            when(paymentRepository.findByStatus(PaymentStatus.COMPLETED))
+            when(paymentRepository.findByStatusOrderByCreatedAtDesc(PaymentStatus.COMPLETED))
                     .thenReturn(List.of());
 
             List<PaymentResponse> result =
                     paymentService.getPaymentsByStatus(PaymentStatus.COMPLETED);
             assertThat(result).isEmpty();
-            verify(paymentRepository).findByStatus(PaymentStatus.COMPLETED);
+            verify(paymentRepository).findByStatusOrderByCreatedAtDesc(PaymentStatus.COMPLETED);
         }
     }
 }

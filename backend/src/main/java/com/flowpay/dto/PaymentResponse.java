@@ -18,10 +18,18 @@ public class PaymentResponse {
     private String currency;
     private String senderAccount;
     private String receiverAccount;
+    private String purpose;
+    private String cardHolderName;
+    private String cardExpiry;
+    private String accountNumber;
+    private String ifscCode;
+    private String accountHolderName;
     private PaymentMethod paymentMethod;
     private PaymentStatus status;
     private String failureCode;
     private String failureMessage;
+    private String userBankAccountNumber;
+    private BigDecimal userBankBalance;
     private int retryCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
