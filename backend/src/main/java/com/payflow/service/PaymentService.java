@@ -12,8 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Core payment business logic — validation, processing, retry, and audit trail.
@@ -30,15 +30,15 @@ public class PaymentService {
 
     private static final Set<String> SUPPORTED_CURRENCIES = Set.of("INR");
     private static final BigDecimal INITIAL_BALANCE = new BigDecimal("100000.00");
-    private static final int MAX_RETRIES = 3;
         private static final Map<PaymentStatus, Set<PaymentStatus>> VALID_TRANSITIONS = Map.of(
             PaymentStatus.CREATED, Set.of(PaymentStatus.VALIDATED, PaymentStatus.FAILED),
             PaymentStatus.VALIDATED, Set.of(PaymentStatus.SENT, PaymentStatus.FAILED),
             PaymentStatus.SENT, Set.of(PaymentStatus.COMPLETED, PaymentStatus.FAILED),
-            PaymentStatus.FAILED, Set.of(PaymentStatus.CREATED),
+            PaymentStatus.FAILED, Set.of(),
             PaymentStatus.COMPLETED, Set.of()
         );
-    private final Random random = new Random();
+    // Counts processed transactions so every 3rd one is simulated as a failure.
+    private final AtomicLong transactionCounter = new AtomicLong(0);
 
     // ──────────────── CREATE ────────────────
 
@@ -118,35 +118,6 @@ public class PaymentService {
                 .toList();
     }
 
-    // ──────────────── RETRY ────────────────
-
-    @Transactional
-    public PaymentResponse retryPayment(Long id, String userEmail) {
-        Payment payment = findPaymentOrThrow(id);
-
-        if (payment.getStatus() != PaymentStatus.FAILED) {
-            throw new BadRequestException(ErrorCode.INVALID_STATUS_TRANSITION,
-                    "Only FAILED payments can be retried");
-        }
-
-        if (payment.getRetryCount() >= MAX_RETRIES) {
-            throw new BadRequestException(ErrorCode.MAX_RETRY_EXCEEDED,
-                    "Maximum retry attempts (" + MAX_RETRIES + ") reached");
-        }
-
-        payment.setRetryCount(payment.getRetryCount() + 1);
-        payment.setFailureCode(null);
-        payment.setFailureMessage(null);
-
-        // Re-process from CREATED
-        transition(payment, PaymentStatus.CREATED,
-                "Retry attempt #" + payment.getRetryCount(), userEmail, TriggerType.RETRY);
-
-        processPaymentLifecycle(payment, userEmail);
-
-        return toResponse(payment);
-    }
-
     // ──────────────── LIFECYCLE ────────────────
 
     /**
@@ -159,30 +130,43 @@ public class PaymentService {
             "Payment validated", userEmail, TriggerType.SYSTEM);
 
         // Step 2: VALIDATED → SENT
+        // Funds are reserved (debited) upfront, before the send attempt, so that
+        // if the transaction fails below, the exact amount can be rolled back
+        // (credited back) to the sender's account.
+        if (!hasSufficientBalance(payment.getUser(), payment.getAmount())) {
+            payment.setFailureCode(ErrorCode.INSUFFICIENT_FUNDS.name());
+            payment.setFailureMessage("Insufficient balance in user bank account");
+            transition(payment, PaymentStatus.FAILED,
+                "Payment failed due to insufficient funds", userEmail, TriggerType.SYSTEM);
+            return;
+        }
+
+        deductFromUserBalance(payment.getUser(), payment.getAmount());
+        addHistory(payment, payment.getStatus(), payment.getStatus(),
+            "Debited " + payment.getCurrency() + " " + payment.getAmount()
+                + " from sender account (reserved pending completion)",
+            userEmail, TriggerType.SYSTEM);
         transition(payment, PaymentStatus.SENT,
             "Payment sent to destination system", userEmail, TriggerType.SYSTEM);
 
-        // Step 3: Simulate finalization (70% success rate)
-        boolean success = random.nextInt(100) < 70;
+        // Step 3: Simulate finalization — every 3rd transaction fails
+        boolean success = transactionCounter.incrementAndGet() % 3 != 0;
 
         if (success) {
-            if (!hasSufficientBalance(payment.getUser(), payment.getAmount())) {
-                payment.setFailureCode(ErrorCode.INSUFFICIENT_FUNDS.name());
-                payment.setFailureMessage("Insufficient balance in user bank account");
-                transition(payment, PaymentStatus.FAILED,
-                    "Payment failed due to insufficient funds", userEmail, TriggerType.SYSTEM);
-                return;
-            }
-
-            deductFromUserBalance(payment.getUser(), payment.getAmount());
             receivingAccountService.creditBalance(payment.getAmount());
             transition(payment, PaymentStatus.COMPLETED,
                 "Payment processed successfully", userEmail, TriggerType.SYSTEM);
         } else {
+            // Rollback: refund the reserved amount back to the sender's account
+            refundToUserBalance(payment.getUser(), payment.getAmount());
+            addHistory(payment, payment.getStatus(), payment.getStatus(),
+                "Refunded " + payment.getCurrency() + " " + payment.getAmount()
+                    + " back to sender account after processing failure",
+                userEmail, TriggerType.SYSTEM);
             payment.setFailureCode(ErrorCode.PROCESSING_ERROR.name());
-            payment.setFailureMessage("Simulated processing failure");
+            payment.setFailureMessage("Simulated processing failure — amount refunded to your account");
             transition(payment, PaymentStatus.FAILED,
-                "Simulated processing failure", userEmail, TriggerType.SYSTEM);
+                "Simulated processing failure — amount refunded", userEmail, TriggerType.SYSTEM);
         }
     }
 
@@ -304,6 +288,12 @@ public class PaymentService {
         userRepository.save(user);
     }
 
+    /** Reverses a prior debit — used to roll back funds when a payment fails after being reserved. */
+    private void refundToUserBalance(User user, BigDecimal amount) {
+        user.setBankBalance(user.getBankBalance().add(amount));
+        userRepository.save(user);
+    }
+
     private void ensureBankProfile(User user) {
         boolean updated = false;
         if (user.getBankBalance() == null) {
@@ -379,7 +369,6 @@ public class PaymentService {
                 .failureMessage(p.getFailureMessage())
                 .userBankAccountNumber(p.getUser().getBankAccountNumber())
                 .userBankBalance(p.getUser().getBankBalance())
-                .retryCount(p.getRetryCount())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())
                 .build();

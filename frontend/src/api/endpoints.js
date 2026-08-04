@@ -11,7 +11,6 @@ export const paymentApi = {
   getById: (id) => api.get(`/payments/${id}`),
   getByStatus: (status) => api.get(`/payments/status/${status}`),
   getHistory: (id) => api.get(`/payments/${id}/history`),
-  retry: (id) => api.post(`/payments/${id}/retry`),
 };
 
 export const receivingAccountApi = {
