@@ -30,7 +30,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
         <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">
-          Sign in to <span className="text-indigo-600">FlowPay</span>
+          Sign in to <span className="text-indigo-600">PayFlow</span>
         </h1>
 
         {error && (

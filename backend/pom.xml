@@ -12,10 +12,10 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.flowpay</groupId>
-    <artifactId>flowpay-backend</artifactId>
+    <groupId>com.payflow</groupId>
+    <artifactId>payflow-backend</artifactId>
     <version>1.0.0</version>
-    <name>FlowPay Backend</name>
+    <name>PayFlow Backend</name>
     <description>Payment processing system - Sprint project</description>
 
     <properties>

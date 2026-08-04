@@ -1,6 +1,6 @@
 spring:
   application:
-    name: flowpay
+    name: payflow
 
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:flowpay}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
@@ -23,7 +23,7 @@ server:
 # JWT config
 app:
   jwt:
-    secret: ${JWT_SECRET:flowpay-super-secret-key-that-is-at-least-256-bits-long-for-hs256}
+    secret: ${JWT_SECRET:payflow-super-secret-key-that-is-at-least-256-bits-long-for-hs256}
     expiration-ms: ${JWT_EXPIRATION:86400000}
 
 # Swagger
