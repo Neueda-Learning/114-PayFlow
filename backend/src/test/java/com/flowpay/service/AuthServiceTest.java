@@ -35,6 +35,7 @@ class AuthServiceTest {
 
     private RegisterRequest registerRequest;
     private LoginRequest loginRequest;
+    private ChangePasswordRequest changePasswordRequest;
 
     @BeforeEach
     void setUp() {
@@ -46,6 +47,11 @@ class AuthServiceTest {
         loginRequest = new LoginRequest();
         loginRequest.setEmail("test@example.com");
         loginRequest.setPassword("password123");
+
+        changePasswordRequest = new ChangePasswordRequest();
+        changePasswordRequest.setCurrentPassword("password123");
+        changePasswordRequest.setNewPassword("newPassword123");
+        changePasswordRequest.setConfirmPassword("newPassword123");
     }
 
     @Test
@@ -126,4 +132,65 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(loginRequest))
                 .isInstanceOf(BadCredentialsException.class);
     }
+
+        @Test
+        @DisplayName("should change password successfully")
+        void shouldChangePasswordSuccessfully() {
+        User user = User.builder()
+            .id(1L)
+            .email("test@example.com")
+            .password("hashed")
+            .role(Role.USER)
+            .build();
+
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("password123", "hashed")).thenReturn(true);
+        when(passwordEncoder.encode("newPassword123")).thenReturn("new-hashed");
+
+        authService.changePassword("test@example.com", changePasswordRequest);
+
+        assertThat(user.getPassword()).isEqualTo("new-hashed");
+        verify(userRepository).save(user);
+        }
+
+        @Test
+        @DisplayName("should reject password change when current password is wrong")
+        void shouldRejectPasswordChangeWithWrongCurrentPassword() {
+        User user = User.builder()
+            .id(1L)
+            .email("test@example.com")
+            .password("hashed")
+            .role(Role.USER)
+            .build();
+
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("password123", "hashed")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.changePassword("test@example.com", changePasswordRequest))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessageContaining("Current password is incorrect");
+
+        verify(userRepository, never()).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("should reject password change when confirmation does not match")
+        void shouldRejectPasswordChangeWhenConfirmationDoesNotMatch() {
+        User user = User.builder()
+            .id(1L)
+            .email("test@example.com")
+            .password("hashed")
+            .role(Role.USER)
+            .build();
+        changePasswordRequest.setConfirmPassword("differentPassword");
+
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("password123", "hashed")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.changePassword("test@example.com", changePasswordRequest))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessageContaining("do not match");
+
+        verify(userRepository, never()).save(any(User.class));
+        }
 }

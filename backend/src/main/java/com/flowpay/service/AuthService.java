@@ -91,6 +91,30 @@ public class AuthService {
                 .build();
     }
 
+        public void changePassword(String userEmail, ChangePasswordRequest request) {
+                User user = userRepository.findByEmail(userEmail)
+                                .orElseThrow(() -> new BadRequestException(ErrorCode.USER_NOT_FOUND,
+                                                "User not found"));
+
+                if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+                        throw new BadRequestException(ErrorCode.VALIDATION_FAILED,
+                                        "Current password is incorrect");
+                }
+
+                if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+                        throw new BadRequestException(ErrorCode.VALIDATION_FAILED,
+                                        "New password and confirm password do not match");
+                }
+
+                if (request.getCurrentPassword().equals(request.getNewPassword())) {
+                        throw new BadRequestException(ErrorCode.VALIDATION_FAILED,
+                                        "New password must be different from current password");
+                }
+
+                user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+                userRepository.save(user);
+        }
+
         private String generateBankAccountNumber() {
                 long suffix = ThreadLocalRandom.current().nextLong(100000000000L, 1000000000000L);
                 return "FP" + suffix;
