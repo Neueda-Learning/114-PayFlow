@@ -64,12 +64,4 @@ public class PaymentController {
                 ApiResponse.ok("Payment history retrieved", paymentService.getPaymentHistory(id)));
     }
 
-    @PostMapping("/{id}/retry")
-    @Operation(summary = "Retry a failed payment (max 3 attempts)")
-        public ResponseEntity<ApiResponse<PaymentResponse>> retryPayment(
-                        @PathVariable Long id,
-                        Authentication auth) {
-        return ResponseEntity.ok(
-                                ApiResponse.ok("Payment retry initiated", paymentService.retryPayment(id, auth.getName())));
-    }
 }
