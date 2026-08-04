@@ -5,6 +5,5 @@ package com.payflow.model;
  */
 public enum TriggerType {
     USER,
-    SYSTEM,
-    RETRY
+    SYSTEM
 }

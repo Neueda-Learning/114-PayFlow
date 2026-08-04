@@ -30,7 +30,6 @@ public class PaymentResponse {
     private String failureMessage;
     private String userBankAccountNumber;
     private BigDecimal userBankBalance;
-    private int retryCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
