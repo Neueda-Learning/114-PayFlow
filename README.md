@@ -1,4 +1,4 @@
-# FlowPay 💸
+# PayFlow 💸
 
 A full-stack payment processing system built as a 5-day Agile Sprint project by a team of 3 junior software engineers.
 
@@ -209,8 +209,8 @@ flowchart LR
 ### Run everything (one command)
 
 ```bash
-git clone https://github.com/your-team/flowpay.git
-cd flowpay
+git clone https://github.com/your-team/payflow.git
+cd payflow
 docker compose up --build
 ```
 
@@ -375,9 +375,9 @@ Example error response:
 ## 📁 Project Structure
 
 ```
-FlowPay/
+PayFlow/
 ├── backend/
-│   ├── src/main/java/com/flowpay/
+│   ├── src/main/java/com/payflow/
 │   │   ├── controller/       # REST endpoints
 │   │   ├── service/          # Business logic
 │   │   ├── repository/       # JPA repositories
