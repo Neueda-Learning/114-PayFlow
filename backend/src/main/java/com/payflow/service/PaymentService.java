@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -106,6 +107,26 @@ public class PaymentService {
 
     public List<PaymentResponse> getPaymentsByStatus(PaymentStatus status) {
         return paymentRepository.findByStatusOrderByCreatedAtDesc(status).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    /**
+     * Flexible search across status, amount range, and date range. Any
+     * combination of filters may be omitted (null) to broaden the search.
+     */
+    public List<PaymentResponse> searchPayments(PaymentStatus status, BigDecimal minAmount,
+                                                 BigDecimal maxAmount, LocalDateTime from,
+                                                 LocalDateTime to) {
+        if (minAmount != null && maxAmount != null && minAmount.compareTo(maxAmount) > 0) {
+            throw new BadRequestException(ErrorCode.INVALID_AMOUNT,
+                    "minAmount cannot be greater than maxAmount");
+        }
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BadRequestException(ErrorCode.VALIDATION_FAILED,
+                    "'from' date cannot be after 'to' date");
+        }
+        return paymentRepository.search(status, minAmount, maxAmount, from, to).stream()
                 .map(this::toResponse)
                 .toList();
     }
