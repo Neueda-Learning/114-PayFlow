@@ -59,7 +59,7 @@ export default function ReceivingAccountPage() {
     <div className="max-w-2xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold text-gray-800 mb-2">Receiving Account</h1>
       <p className="text-sm text-gray-500 mb-6">
-        This is the account that will receive money whenever any payment is sent from FlowPay.
+        This is the account that will receive money whenever any payment is sent from PayFlow.
       </p>
 
       {current && (
