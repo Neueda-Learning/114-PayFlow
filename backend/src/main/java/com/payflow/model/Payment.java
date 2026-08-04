@@ -68,9 +68,6 @@ public class Payment {
     private String failureCode;
     private String failureMessage;
 
-    @Builder.Default
-    private int retryCount = 0;
-
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

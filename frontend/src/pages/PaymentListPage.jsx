@@ -83,7 +83,6 @@ export default function PaymentListPage() {
                 <th className="px-4 py-2 text-left">Comment</th>
                 <th className="px-4 py-2 text-left">Method</th>
                 <th className="px-4 py-2 text-left">Status</th>
-                <th className="px-4 py-2 text-left">Retries</th>
                 <th className="px-4 py-2 text-left">Date</th>
               </tr>
             </thead>
@@ -114,8 +113,15 @@ export default function PaymentListPage() {
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor(p.status)}`}>
                       {p.status}
                     </span>
+                    {p.status === 'FAILED' && p.failureCode === 'PROCESSING_ERROR' && (
+                      <span
+                        title="Debited amount was automatically refunded"
+                        className="ml-1 px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700"
+                      >
+                        ↩️ Refunded
+                      </span>
+                    )}
                   </td>
-                  <td className="px-4 py-2 text-gray-500">{p.retryCount}</td>
                   <td className="px-4 py-2 text-gray-400">
                     {new Date(p.createdAt).toLocaleDateString()}
                   </td>

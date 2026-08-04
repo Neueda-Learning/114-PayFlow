@@ -7,7 +7,6 @@ export default function PaymentDetailPage() {
   const [payment, setPayment] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -31,24 +30,6 @@ export default function PaymentDetailPage() {
     }
   };
 
-  const handleRetry = async () => {
-    setRetrying(true);
-    setError('');
-    try {
-      const res = await paymentApi.retry(id);
-      setPayment(res.data.data);
-      // Reload history
-      const historyRes = await paymentApi.getHistory(id);
-      setHistory(historyRes.data.data || []);
-    } catch (err) {
-      const code = err.response?.data?.errorCode;
-      const message = err.response?.data?.message || 'Retry failed';
-      setError(code ? `${code}: ${message}` : message);
-    } finally {
-      setRetrying(false);
-    }
-  };
-
   const statusColor = (status) => {
     const colors = {
       CREATED: 'bg-gray-100 text-gray-700',
@@ -65,6 +46,13 @@ export default function PaymentDetailPage() {
     if (entries.length === 0) return null;
     return entries[entries.length - 1].timestamp;
   };
+
+  // Debit/refund entries are logged as same-status history rows (no state
+  // transition), so they can be told apart from status changes and styled
+  // distinctly for the customer.
+  const isRefundEvent = (h) => h.oldStatus === h.newStatus && /refund/i.test(h.reason || '');
+  const isDebitEvent = (h) => h.oldStatus === h.newStatus && /debit/i.test(h.reason || '');
+  const rollbackEntry = history.find(isRefundEvent);
 
   const lifecycleEvents = [
     { label: 'Created At', value: getLatestStatusTimestamp('CREATED') || payment?.createdAt },
@@ -87,19 +75,27 @@ export default function PaymentDetailPage() {
 
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Payment #{payment.id}</h1>
-        {payment.status === 'FAILED' && payment.retryCount < 3 && (
-          <button
-            onClick={handleRetry}
-            disabled={retrying}
-            className="bg-orange-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
-          >
-            {retrying ? 'Retrying...' : `Retry (${payment.retryCount}/3)`}
-          </button>
-        )}
       </div>
 
       {error && (
         <div className="bg-red-50 text-red-600 px-4 py-2 rounded mb-4 text-sm">{error}</div>
+      )}
+
+      {/* Rollback Banner — shown when a failed payment's funds were refunded */}
+      {rollbackEntry && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-3 mb-6 flex items-start gap-3">
+          <span className="text-xl leading-none">↩️</span>
+          <div>
+            <p className="font-semibold">Rollback Completed</p>
+            <p className="text-sm">
+              This payment failed during processing, so {payment.currency} {payment.amount} was
+              automatically reversed and credited back to your account. No money was lost.
+            </p>
+            <p className="text-xs text-emerald-600 mt-1">
+              Refunded at {new Date(rollbackEntry.timestamp).toLocaleString()}
+            </p>
+          </div>
+        </div>
       )}
 
       {/* Payment Details */}
@@ -139,10 +135,6 @@ export default function PaymentDetailPage() {
           <div>
             <p className="text-xs text-gray-400 uppercase">Remaining Balance</p>
             <p className="text-sm font-semibold text-green-700">INR {payment.userBankBalance ?? '-'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 uppercase">Retries</p>
-            <p className="text-sm text-gray-700">{payment.retryCount} / 3</p>
           </div>
 
           {payment.paymentMethod === 'CARD' && (
@@ -220,6 +212,8 @@ export default function PaymentDetailPage() {
               <div key={h.id} className="flex items-start gap-3">
                 <div className="flex flex-col items-center">
                   <div className={`w-3 h-3 rounded-full ${
+                    isRefundEvent(h) ? 'bg-emerald-500' :
+                    isDebitEvent(h) ? 'bg-amber-500' :
                     h.newStatus === 'COMPLETED' ? 'bg-green-500' :
                     h.newStatus === 'FAILED' ? 'bg-red-500' :
                     'bg-indigo-500'
@@ -228,7 +222,9 @@ export default function PaymentDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-700">
-                    {h.oldStatus ? `${h.oldStatus} → ${h.newStatus}` : h.newStatus}
+                    {isRefundEvent(h) ? '↩️ Rollback / Refund' :
+                      isDebitEvent(h) ? '💸 Funds Reserved' :
+                      h.oldStatus ? `${h.oldStatus} → ${h.newStatus}` : h.newStatus}
                   </p>
                   <p className="text-xs text-gray-400">{h.reason}</p>
                   <p className="text-xs text-gray-400">
