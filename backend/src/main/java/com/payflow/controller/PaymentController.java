@@ -8,21 +8,18 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/payments")
 @RequiredArgsConstructor
 @SecurityRequirement(name = "bearerAuth")
-@Tag(name = "Payments", description = "Payment CRUD and processing endpoints")
+@Tag(name = "Payments", description = "Payment CRUD, processing, retry, and rollback endpoints")
 public class PaymentController {
 
     private final PaymentService paymentService;
@@ -59,19 +56,6 @@ public class PaymentController {
                 ApiResponse.ok("Payments retrieved", paymentService.getPaymentsByStatus(status)));
     }
 
-    @GetMapping("/search")
-    @Operation(summary = "Search payments by status, amount range, and/or date range (all filters optional)")
-    public ResponseEntity<ApiResponse<List<PaymentResponse>>> searchPayments(
-            @RequestParam(required = false) PaymentStatus status,
-            @RequestParam(required = false) BigDecimal minAmount,
-            @RequestParam(required = false) BigDecimal maxAmount,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
-        return ResponseEntity.ok(
-                ApiResponse.ok("Payments retrieved",
-                        paymentService.searchPayments(status, minAmount, maxAmount, from, to)));
-    }
-
     @GetMapping("/{id}/history")
     @Operation(summary = "Get payment audit history")
     public ResponseEntity<ApiResponse<List<PaymentHistoryResponse>>> getHistory(
@@ -80,4 +64,21 @@ public class PaymentController {
                 ApiResponse.ok("Payment history retrieved", paymentService.getPaymentHistory(id)));
     }
 
+    @PostMapping("/{id}/retry")
+    @Operation(summary = "Retry a failed payment (max 3 attempts)")
+    public ResponseEntity<ApiResponse<PaymentResponse>> retryPayment(
+            @PathVariable Long id,
+            Authentication auth) {
+        return ResponseEntity.ok(
+                ApiResponse.ok("Payment retry initiated", paymentService.retryPayment(id, auth.getName())));
+    }
+
+    @PostMapping("/{id}/rollback")
+    @Operation(summary = "Manually rollback debited funds for a failed payment")
+    public ResponseEntity<ApiResponse<PaymentResponse>> rollbackPayment(
+            @PathVariable Long id,
+            Authentication auth) {
+        return ResponseEntity.ok(
+                ApiResponse.ok("Payment rollback completed successfully", paymentService.rollbackPayment(id, auth.getName())));
+    }
 }

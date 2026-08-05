@@ -7,18 +7,17 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Singleton entity holding the single account (account number + UPI ID) that
- * receives money whenever any user sends a payment. Configured via a
- * dedicated settings page rather than typed manually on every payment.
+ * Entity holding configured receiver accounts (destination accounts) for incoming payments.
  */
 @Entity
-@Table(name = "receiving_account")
+@Table(name = "receiving_accounts")
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor
 @Builder
 public class ReceivingAccount {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Convert(converter = EncryptedStringConverter.class)
@@ -27,6 +26,13 @@ public class ReceivingAccount {
 
     @Column(nullable = false)
     private String upiId;
+
+    @Column(nullable = false)
+    private String accountHolderName;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private String ifscCode = "HDFC0123456";
 
     @Builder.Default
     @Column(nullable = false)

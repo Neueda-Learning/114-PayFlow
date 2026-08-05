@@ -44,8 +44,6 @@ public class Payment {
     // Card fields (used when paymentMethod=CARD)
     private String cardHolderName;
     private String cardExpiry;
-    // NOTE: CVV is intentionally never persisted (PCI-DSS: CVV must not be stored
-    // after authorization). It is validated in PaymentService and then discarded.
 
     // Bank transfer fields (used when paymentMethod=BANK_TRANSFER)
     @Convert(converter = EncryptedStringConverter.class)
@@ -67,6 +65,20 @@ public class Payment {
     /** Failure details — null when successful */
     private String failureCode;
     private String failureMessage;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private int retryCount = 0;
+
+    /** Track whether funds have been debited from sender */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean fundsDebited = false;
+
+    /** Track whether money for a failed transaction has been rolled back/refunded to sender */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean refunded = false;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
