@@ -48,7 +48,7 @@ docker compose up --build
 
 That's it! Open:
 - **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8080/api
+- **Backend API**: http://localhost:8081/api
 - **Swagger UI**: http://localhost:3000/swagger-ui/index.html
 
 ### Stop & Reset
