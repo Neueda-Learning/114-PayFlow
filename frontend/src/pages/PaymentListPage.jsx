@@ -6,24 +6,58 @@ export default function PaymentListPage() {
   const navigate = useNavigate();
   const [payments, setPayments] = useState([]);
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     loadPayments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
+
+  const hasRangeFilters = minAmount || maxAmount || fromDate || toDate;
 
   const loadPayments = async () => {
     setLoading(true);
+    setError('');
     try {
-      const res = statusFilter === 'ALL'
-        ? await paymentApi.getAll()
-        : await paymentApi.getByStatus(statusFilter);
+      let res;
+      if (hasRangeFilters) {
+        const params = {};
+        if (statusFilter !== 'ALL') params.status = statusFilter;
+        if (minAmount) params.minAmount = minAmount;
+        if (maxAmount) params.maxAmount = maxAmount;
+        if (fromDate) params.from = `${fromDate}T00:00:00`;
+        if (toDate) params.to = `${toDate}T23:59:59`;
+        res = await paymentApi.search(params);
+      } else {
+        res = statusFilter === 'ALL'
+          ? await paymentApi.getAll()
+          : await paymentApi.getByStatus(statusFilter);
+      }
       setPayments(res.data.data || []);
     } catch (err) {
       console.error('Failed to load payments', err);
+      setError(err.response?.data?.message || 'Failed to load payments');
     } finally {
       setLoading(false);
     }
+  };
+
+  const applyRangeFilters = (e) => {
+    e.preventDefault();
+    loadPayments();
+  };
+
+  const clearRangeFilters = () => {
+    setMinAmount('');
+    setMaxAmount('');
+    setFromDate('');
+    setToDate('');
+    setTimeout(loadPayments, 0);
   };
 
   const statusColor = (status) => {
@@ -65,6 +99,70 @@ export default function PaymentListPage() {
           </button>
         ))}
       </div>
+
+      {/* Amount & Date Range Filters */}
+      <form
+        onSubmit={applyRangeFilters}
+        className="flex flex-wrap items-end gap-3 mb-4 bg-white rounded-lg border border-gray-100 p-3"
+      >
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Min Amount</label>
+          <input
+            type="number"
+            step="0.01"
+            value={minAmount}
+            onChange={(e) => setMinAmount(e.target.value)}
+            className="w-28 border border-gray-300 rounded-md px-2 py-1 text-sm"
+            placeholder="0.00"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Max Amount</label>
+          <input
+            type="number"
+            step="0.01"
+            value={maxAmount}
+            onChange={(e) => setMaxAmount(e.target.value)}
+            className="w-28 border border-gray-300 rounded-md px-2 py-1 text-sm"
+            placeholder="0.00"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">From Date</label>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">To Date</label>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+          />
+        </div>
+        <button
+          type="submit"
+          className="bg-indigo-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-700"
+        >
+          Apply
+        </button>
+        <button
+          type="button"
+          onClick={clearRangeFilters}
+          className="bg-white text-gray-600 border border-gray-300 px-4 py-1.5 rounded-md text-sm font-medium hover:bg-gray-50"
+        >
+          Clear
+        </button>
+      </form>
+
+      {error && (
+        <p className="text-red-600 text-sm mb-4">{error}</p>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
