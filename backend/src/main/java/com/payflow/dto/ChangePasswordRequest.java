@@ -1,4 +1,4 @@
-package com.flowpay.dto;
+package com.payflow.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
