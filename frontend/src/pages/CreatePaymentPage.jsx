@@ -1,46 +1,84 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { Wallet, AlertTriangle, Send } from 'lucide-react';
+import { Wallet, AlertTriangle, Send, CreditCard, Landmark, Smartphone, ChevronDown, CheckCircle2, RotateCw } from 'lucide-react';
 import { paymentApi, receivingAccountApi } from '../api/endpoints';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
 
 const IFSC_REGEX = /^[A-Z]{4}0[A-Z0-9]{6}$/;
-const UPI_REGEX = /^[\w.+-]+@[\w.-]+$/;
+const UPI_REGEX = /^[\w.-]+@[\w.-]+$/;
 const EXPIRY_REGEX = /^(0[1-9]|1[0-2])\/\d{2}$/;
 
-function validateForm(form) {
-  if (!form.amount || parseFloat(form.amount) <= 0) return 'Enter a valid amount greater than 0';
-  if (!form.purpose.trim()) return 'Purpose / comment is required';
+function isCardExpired(expiryStr) {
+  if (!EXPIRY_REGEX.test(expiryStr)) return true;
+  const [mm, yy] = expiryStr.split('/').map(Number);
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = Number(now.getFullYear().toString().slice(-2));
+
+  if (yy < currentYear) return true;
+  if (yy === currentYear && mm < currentMonth) return true;
+  return false;
+}
+
+function validateForm(form, availableBalance) {
+  const amt = parseFloat(form.amount);
+  if (isNaN(amt) || amt <= 0) return 'Amount must be a positive number greater than 0';
+  if (availableBalance !== undefined && availableBalance !== null && amt > Number(availableBalance)) {
+    return `Insufficient balance in selected account (Available: INR ${availableBalance})`;
+  }
+
+  if (!form.purpose.trim() || form.purpose.trim().length < 3) {
+    return 'Purpose / comment must be at least 3 characters long';
+  }
 
   if (form.paymentMethod === 'CARD') {
-    if (!/^\d{12,19}$/.test(form.senderAccount.replace(/\s/g, ''))) return 'Card number must be 12-19 digits';
-    if (!EXPIRY_REGEX.test(form.cardExpiry)) return 'Card expiry must be in MM/YY format';
-    if (!/^\d{3,4}$/.test(form.cardCvv)) return 'CVV must be 3 or 4 digits';
+    const rawCard = (form.senderAccount || '').replace(/\s+/g, '');
+    if (!/^\d{13,19}$/.test(rawCard)) return 'Card number must be 13 to 19 numeric digits';
+    if (!EXPIRY_REGEX.test(form.cardExpiry)) return 'Card expiry must be in MM/YY format (e.g. 12/28)';
+    if (isCardExpired(form.cardExpiry)) return 'Card has expired! Please enter a valid future expiry date';
+    if (!/^\d{3,4}$/.test(form.cardCvv)) return 'CVV must be 3 or 4 numeric digits';
+    if (!form.cardHolderName.trim()) return 'Card holder name is required';
   } else if (form.paymentMethod === 'BANK_TRANSFER') {
-    if (!/^\d{6,20}$/.test(form.accountNumber)) return 'Account number must be 6-20 digits';
-    if (!IFSC_REGEX.test(form.ifscCode.toUpperCase())) return 'IFSC code format is invalid (e.g. HDFC0123456)';
-    if (!form.accountHolderName.trim()) return 'Account holder name is required';
+    if (!form.accountNumber) return 'Destination account number is required';
+    if (!form.ifscCode || !IFSC_REGEX.test(form.ifscCode.toUpperCase())) return 'IFSC code is invalid';
+    if (!form.accountHolderName.trim()) return 'Receiver account holder name is required';
   } else if (form.paymentMethod === 'UPI') {
-    if (!UPI_REGEX.test(form.senderAccount)) return 'Enter a valid UPI ID (e.g. name@bank)';
+    if (!form.receiverAccount || !UPI_REGEX.test(form.receiverAccount.trim())) return 'Enter a valid Receiver UPI ID (e.g. receiver@upi)';
+    if (!form.senderAccount || !UPI_REGEX.test(form.senderAccount.trim())) return 'Enter a valid Sender UPI ID (e.g. user@payflow)';
   }
   return null;
 }
 
 export default function CreatePaymentPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, updateUserBankData } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [receivingAccount, setReceivingAccount] = useState(null);
+  const [receivingAccounts, setReceivingAccounts] = useState([]);
+  const [selectedReceiverId, setSelectedReceiverId] = useState('');
   const [receivingAccountError, setReceivingAccountError] = useState('');
+
+  // Pre-configured sender accounts list for user selection
+  const userUpiDefault = user?.email ? `${user.email.split('@')[0]}@payflow` : 'user@payflow';
+  const senderAccountsList = [
+    { id: 'PRIMARY', label: `Primary Bank A/C (${user?.bankAccountNumber || 'FP1'})`, accountNumber: user?.bankAccountNumber || 'FP1', balance: user?.bankBalance ?? 100000, holder: user?.name || 'Primary User' },
+    { id: 'CORPORATE', label: 'HDFC Corporate Account (FP2002)', accountNumber: 'FP2002', balance: 250000, holder: 'PayFlow Corporate User' },
+    { id: 'BUSINESS', label: 'Axis Business Account (FP3003)', accountNumber: 'FP3003', balance: 500000, holder: 'PayFlow Enterprise' },
+  ];
+
+  const [selectedSenderId, setSelectedSenderId] = useState('PRIMARY');
+  const activeSender = senderAccountsList.find(s => s.id === selectedSenderId) || senderAccountsList[0];
+
   const [form, setForm] = useState({
-    amount: '',
+    amount: searchParams.get('amount') || '',
     currency: 'INR',
-    senderAccount: '',
-    purpose: '',
-    paymentMethod: 'CARD',
+    senderAccount: '', // Start empty for card/blank inputs
+    receiverAccount: searchParams.get('receiverAccount') || '',
+    purpose: searchParams.get('purpose') ? `Repeat: ${searchParams.get('purpose')}` : '',
+    paymentMethod: searchParams.get('paymentMethod') || 'CARD',
     cardHolderName: '',
     cardExpiry: '',
     cardCvv: '',
@@ -54,12 +92,20 @@ export default function CreatePaymentPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await receivingAccountApi.get();
-        if (!cancelled) setReceivingAccount(res.data.data);
+        const res = await receivingAccountApi.getAll();
+        if (!cancelled && res.data.data) {
+          const list = Array.isArray(res.data.data) ? res.data.data : [res.data.data];
+          setReceivingAccounts(list);
+          if (list.length > 0) {
+            const first = list[0];
+            setSelectedReceiverId(first.id || '');
+            applyReceiverSelection(first, form.paymentMethod);
+          }
+        }
       } catch (err) {
         if (!cancelled) {
           setReceivingAccountError(
-            err.response?.data?.message || 'No receiving account has been configured yet.'
+            err.response?.data?.message || 'No receiving accounts configured.'
           );
         }
       }
@@ -67,15 +113,79 @@ export default function CreatePaymentPage() {
     return () => { cancelled = true; };
   }, []);
 
+  const applyReceiverSelection = (rec, method) => {
+    if (!rec) return;
+    setForm(prev => ({
+      ...prev,
+      accountNumber: rec.accountNumber || '',
+      ifscCode: rec.ifscCode || 'HDFC0123456',
+      accountHolderName: rec.accountHolderName || 'PayFlow Treasury',
+      receiverAccount: searchParams.get('receiverAccount') || (method === 'UPI' ? (rec.upiId || 'receiver@upi') : (rec.accountNumber || '')),
+    }));
+  };
+
+  const handleReceiverSelectChange = (e) => {
+    const id = e.target.value;
+    setSelectedReceiverId(id);
+    const rec = receivingAccounts.find(r => String(r.id) === String(id) || r.accountNumber === id);
+    if (rec) {
+      applyReceiverSelection(rec, form.paymentMethod);
+    }
+  };
+
+  const handleSenderSelectChange = (e) => {
+    const id = e.target.value;
+    setSelectedSenderId(id);
+    const sender = senderAccountsList.find(s => s.id === id) || senderAccountsList[0];
+    if (form.paymentMethod === 'BANK_TRANSFER') {
+      setForm(prev => ({ ...prev, senderAccount: sender.accountNumber }));
+    }
+  };
+
+  const handleMethodSelect = (method) => {
+    const updated = { ...form, paymentMethod: method };
+    const currentReceiver = receivingAccounts.find(r => String(r.id) === String(selectedReceiverId)) || receivingAccounts[0];
+
+    if (method === 'UPI') {
+      updated.senderAccount = userUpiDefault;
+      updated.receiverAccount = currentReceiver?.upiId || 'receiver@upi';
+    } else if (method === 'CARD') {
+      updated.senderAccount = '';
+      updated.cardHolderName = '';
+      updated.cardExpiry = '';
+      updated.cardCvv = '';
+      updated.receiverAccount = currentReceiver?.accountNumber || '';
+    } else {
+      updated.senderAccount = activeSender.accountNumber;
+      updated.receiverAccount = currentReceiver?.accountNumber || '';
+      if (currentReceiver) {
+        updated.accountNumber = currentReceiver.accountNumber || '';
+        updated.accountHolderName = currentReceiver.accountHolderName || '';
+        updated.ifscCode = currentReceiver.ifscCode || 'HDFC0123456';
+      }
+    }
+    setForm(updated);
+  };
+
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    let { name, value } = e.target;
+    if (name === 'amount') {
+      if (Number(value) < 0) value = '0';
+    } else if (name === 'ifscCode') {
+      value = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    } else if (name === 'cardCvv') {
+      value = value.replace(/\D/g, '');
+    } else if (name === 'cardExpiry') {
+      value = value.replace(/[^0-9/]/g, '');
+    }
+    setForm({ ...form, [name]: value });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    const validationError = validateForm(form);
+    const validationError = validateForm(form, activeSender.balance);
     if (validationError) {
       setError(validationError);
       toast.error(validationError);
@@ -84,7 +194,13 @@ export default function CreatePaymentPage() {
 
     setLoading(true);
     try {
-      const payload = { ...form, amount: parseFloat(form.amount) };
+      const payload = { 
+        ...form, 
+        amount: parseFloat(form.amount),
+        ifscCode: form.ifscCode ? form.ifscCode.toUpperCase() : undefined,
+        senderAccount: (form.senderAccount || activeSender.accountNumber).trim(),
+        receiverAccount: form.receiverAccount.trim()
+      };
       const res = await paymentApi.create(payload);
       updateUserBankData({
         bankAccountNumber: res.data.data.userBankAccountNumber,
@@ -93,211 +209,275 @@ export default function CreatePaymentPage() {
       toast.success('Payment submitted successfully');
       navigate(`/payments/${res.data.data.id}`);
     } catch (err) {
-      const code = err.response?.data?.errorCode;
       const message = err.response?.data?.message || 'Failed to create payment';
-      const fullMessage = code ? `${code}: ${message}` : message;
-      setError(fullMessage);
-      toast.error(fullMessage);
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 animate-fade-in">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Create Payment</h1>
-
-      <div className="bg-white/90 backdrop-blur-sm p-4 rounded-xl shadow-soft border border-gray-100/70 mb-4 flex items-center gap-4">
-        <div className="bg-indigo-50 text-indigo-600 rounded-full p-3">
-          <Wallet size={20} />
-        </div>
+    <div className="p-4 lg:p-6 max-w-4xl mx-auto space-y-4">
+      <div className="flex items-center justify-between">
         <div>
-        <p className="text-sm text-gray-500">Your Bank Account</p>
-        <p className="text-sm font-semibold text-gray-800">{user?.bankAccountNumber || '-'}</p>
-        <p className="text-sm text-gray-500 mt-2">Available Balance</p>
-        <p className="text-lg font-bold text-green-700">INR {user?.bankBalance ?? '-'}</p>
+          <h1 className="text-2xl font-bold text-slate-900">Initiate Payment</h1>
+          <p className="text-sm text-slate-500 font-medium">Select source and destination accounts to transfer funds</p>
+        </div>
+
+        <div className="flex items-center gap-3 bg-white border border-slate-200 px-3.5 py-2 rounded shadow-subtle text-sm">
+          <span className="text-slate-600 font-medium">Active Source: <strong className="text-slate-900">{activeSender.accountNumber}</strong></span>
+          <span className="text-slate-300">|</span>
+          <span className="text-emerald-700 font-bold">Bal: INR {Number(activeSender.balance).toLocaleString()}</span>
         </div>
       </div>
 
-      {receivingAccount ? (
-        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 mb-4">
-          <p className="text-sm text-indigo-700 font-medium">Money will be sent to</p>
-          <p className="text-sm text-gray-800">A/C: {receivingAccount.accountNumber}</p>
-          <p className="text-sm text-gray-800">UPI: {receivingAccount.upiId}</p>
-        </div>
-      ) : (
-        <div className="bg-yellow-50 text-yellow-700 px-4 py-2 rounded mb-4 text-sm flex items-start gap-2">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-          <span>
-            {receivingAccountError} Please{' '}
-            <Link to="/receiving-account" className="underline font-medium">
-              configure a receiving account
-            </Link>{' '}
-            before sending a payment.
-          </span>
+      {searchParams.get('purpose') && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-2.5 rounded text-xs font-bold flex items-center gap-2">
+          <RotateCw size={14} className="text-blue-600 animate-spin" />
+          <span>Pre-filled for Repeat Payment (Replay Transaction)</span>
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 text-red-600 px-4 py-2 rounded mb-4 text-sm border border-red-100">{error}</div>
+        <div className="bg-rose-50 text-rose-700 px-4 py-2.5 rounded text-sm border border-rose-200 font-bold">{error}</div>
       )}
 
-      <form onSubmit={handleSubmit} className="bg-white/90 backdrop-blur-sm p-6 rounded-xl shadow-soft border border-gray-100/70 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-lg p-5 shadow-subtle space-y-4">
+        {/* Method selector bar */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { id: 'CARD', label: 'Card Payment', icon: CreditCard },
+            { id: 'BANK_TRANSFER', label: 'Bank Transfer', icon: Landmark },
+            { id: 'UPI', label: 'UPI Payment', icon: Smartphone },
+          ].map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => handleMethodSelect(id)}
+              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded border text-sm font-bold transition-colors ${
+                form.paymentMethod === id
+                  ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-subtle'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Icon size={16} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* 1. SELECT SENDER ACCOUNT DROPDOWN */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Select Sender Account (Source)</label>
+            <div className="relative">
+              <select
+                value={selectedSenderId}
+                onChange={handleSenderSelectChange}
+                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-600 appearance-none cursor-pointer"
+              >
+                {senderAccountsList.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label} — Bal: INR {s.balance.toLocaleString()}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* 2. SELECT RECEIVER ACCOUNT DROPDOWN */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Select Receiver Account (Destination)</label>
+            <div className="relative">
+              <select
+                value={selectedReceiverId}
+                onChange={handleReceiverSelectChange}
+                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-600 appearance-none cursor-pointer"
+              >
+                {receivingAccounts.length === 0 ? (
+                  <option value="">No receiver accounts configured</option>
+                ) : (
+                  receivingAccounts.map((rec) => (
+                    <option key={rec.id} value={rec.id}>
+                      {rec.accountHolderName} ({form.paymentMethod === 'UPI' ? rec.upiId : rec.accountNumber})
+                    </option>
+                  ))
+                )}
+              </select>
+              <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          </div>
+        </div>
+
+        {/* Amount */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Amount (INR)</label>
             <input
               type="number"
               name="amount"
               value={form.amount}
               onChange={handleChange}
+              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
               required
               min="0.01"
+              max={activeSender.balance}
               step="0.01"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded text-base font-bold text-slate-900 focus:outline-none focus:border-blue-600"
               placeholder="100.00"
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
-            <p className="text-gray-700">INR</p>
-            <input type="hidden" name="currency" value="INR" />
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+              {form.paymentMethod === 'UPI' ? 'Selected Receiver UPI' : 'Destination Account Number'}
+            </label>
+            <input
+              type="text"
+              name="receiverAccount"
+              value={form.receiverAccount}
+              readOnly
+              className="w-full px-3.5 py-2 bg-slate-100 border border-slate-300 rounded text-sm font-bold text-slate-900 font-mono cursor-not-allowed"
+            />
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
-          <select
-            name="paymentMethod"
-            value={form.paymentMethod}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="CARD">Card</option>
-            <option value="BANK_TRANSFER">Bank Transfer</option>
-            <option value="UPI">UPI</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            {form.paymentMethod === 'CARD' ? 'Card Number' : 'Sender Account'}
-          </label>
-          <input
-            type="text"
-            name="senderAccount"
-            value={form.senderAccount}
-            onChange={handleChange}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder={form.paymentMethod === 'UPI' ? 'sender@upi' : form.paymentMethod === 'CARD' ? 'Card number' : 'Sender account'}
-          />
-        </div>
+        {/* Method Specific Details */}
+        {form.paymentMethod === 'UPI' && (
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Sender UPI ID</label>
+              <input
+                type="text"
+                name="senderAccount"
+                value={form.senderAccount}
+                onChange={handleChange}
+                required
+                className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded text-sm font-medium text-slate-900 focus:outline-none focus:border-blue-600 font-mono"
+                placeholder="user@payflow"
+              />
+            </div>
+          </div>
+        )}
 
         {form.paymentMethod === 'CARD' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-3 pt-2 border-t border-slate-100">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Card Holder Name</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Card Number (13-19 Digits)</label>
               <input
                 type="text"
-                name="cardHolderName"
-                value={form.cardHolderName}
+                name="senderAccount"
+                value={form.senderAccount}
                 onChange={handleChange}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Name on card"
+                className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded text-sm font-medium text-slate-900 focus:outline-none focus:border-blue-600 font-mono"
+                placeholder="Enter 16-digit card number"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Expiry (MM/YY)</label>
-              <input
-                type="text"
-                name="cardExpiry"
-                value={form.cardExpiry}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="08/30"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">CVV</label>
-              <input
-                type="password"
-                name="cardCvv"
-                value={form.cardCvv}
-                onChange={handleChange}
-                required
-                maxLength={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="123"
-              />
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Card Holder Name</label>
+                <input
+                  type="text"
+                  name="cardHolderName"
+                  value={form.cardHolderName}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-3 py-2 border border-slate-300 rounded text-sm text-slate-900 focus:border-blue-600 font-semibold"
+                  placeholder="Cardholder Name"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Expiry (MM/YY)</label>
+                <input
+                  type="text"
+                  name="cardExpiry"
+                  value={form.cardExpiry}
+                  onChange={handleChange}
+                  required
+                  maxLength={5}
+                  className="w-full px-3 py-2 border border-slate-300 rounded text-sm text-slate-900 focus:border-blue-600 font-mono"
+                  placeholder="MM/YY"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">CVV (3-4 Digits)</label>
+                <input
+                  type="password"
+                  name="cardCvv"
+                  value={form.cardCvv}
+                  onChange={handleChange}
+                  required
+                  maxLength={4}
+                  className="w-full px-3 py-2 border border-slate-300 rounded text-sm text-slate-900 focus:border-blue-600 font-mono"
+                  placeholder="CVV"
+                />
+              </div>
             </div>
           </div>
         )}
 
         {form.paymentMethod === 'BANK_TRANSFER' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
-              <input
-                type="text"
-                name="accountNumber"
-                value={form.accountNumber}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Bank account number"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">IFSC</label>
-              <input
-                type="text"
-                name="ifscCode"
-                value={form.ifscCode}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="HDFC0123456"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Account Holder Name</label>
-              <input
-                type="text"
-                name="accountHolderName"
-                value={form.accountHolderName}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Account holder name"
-              />
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Receiver Account Number</label>
+                <input
+                  type="text"
+                  name="accountNumber"
+                  value={form.accountNumber}
+                  readOnly
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-sm text-slate-800 font-mono font-bold cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Receiver IFSC Code</label>
+                <input
+                  type="text"
+                  name="ifscCode"
+                  value={form.ifscCode}
+                  readOnly
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-sm text-slate-800 font-mono font-bold cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Receiver Name</label>
+                <input
+                  type="text"
+                  name="accountHolderName"
+                  value={form.accountHolderName}
+                  readOnly
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded text-sm text-slate-800 font-bold cursor-not-allowed"
+                />
+              </div>
             </div>
           </div>
         )}
 
+        {/* Purpose */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Purpose / Comment</label>
-          <textarea
+          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Purpose / Description</label>
+          <input
+            type="text"
             name="purpose"
             value={form.purpose}
             onChange={handleChange}
             required
             maxLength={300}
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Write the purpose of this payment"
+            className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded text-sm text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+            placeholder="Reason for payment (min 3 characters)"
           />
         </div>
 
         <button
           type="submit"
-          disabled={loading || !receivingAccount}
-          className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50 font-medium"
+          disabled={loading || receivingAccounts.length === 0}
+          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded font-bold text-sm shadow-subtle disabled:opacity-50 transition-colors"
         >
-          {loading ? <Spinner size={16} /> : <Send size={16} />}
-          {loading ? 'Processing...' : 'Submit Payment'}
+          {loading ? <Spinner size={18} /> : <Send size={18} />}
+          {loading ? 'Processing Payment...' : 'Submit Payment'}
         </button>
       </form>
     </div>

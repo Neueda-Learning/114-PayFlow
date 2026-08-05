@@ -1,14 +1,14 @@
 const COLORS = {
-  CREATED: 'bg-gray-100 text-gray-700',
-  VALIDATED: 'bg-blue-100 text-blue-700',
-  SENT: 'bg-yellow-100 text-yellow-700',
-  COMPLETED: 'bg-green-100 text-green-700',
-  FAILED: 'bg-red-100 text-red-700',
+  CREATED: 'bg-slate-100 text-slate-700 border-slate-300',
+  VALIDATED: 'bg-blue-50 text-blue-700 border-blue-200',
+  SENT: 'bg-amber-50 text-amber-700 border-amber-200',
+  COMPLETED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  FAILED: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
 export default function StatusBadge({ status }) {
   return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${COLORS[status] || 'bg-gray-100 text-gray-700'}`}>
+    <span className={`inline-block px-2.5 py-0.5 rounded border text-xs font-bold tracking-wide uppercase whitespace-nowrap ${COLORS[status] || 'bg-slate-100 text-slate-700 border-slate-300'}`}>
       {status}
     </span>
   );

@@ -5,6 +5,8 @@ import { User, Mail, Lock, Eye, EyeOff, Wallet } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function RegisterPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -18,10 +20,34 @@ export default function RegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    const cleanName = fullName.trim();
+    if (!cleanName || cleanName.length < 2) {
+      const err = 'Full name must be at least 2 characters';
+      setError(err);
+      toast.error(err);
+      return;
+    }
+
+    const cleanEmail = email.trim();
+    if (!EMAIL_REGEX.test(cleanEmail)) {
+      const err = 'Please enter a valid email address';
+      setError(err);
+      toast.error(err);
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      const err = 'Password must be at least 6 characters';
+      setError(err);
+      toast.error(err);
+      return;
+    }
+
     setLoading(true);
     try {
-      await register(fullName, email, password);
-      toast.success('Account created successfully!');
+      await register(cleanName, cleanEmail, password);
+      toast.success('Account created successfully');
       navigate('/');
     } catch (err) {
       const code = err.response?.data?.errorCode;
@@ -35,71 +61,72 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-indigo-50 via-gray-50 to-sky-50 px-4">
-      <div className="absolute -top-24 -left-24 w-72 h-72 bg-indigo-300/30 rounded-full blur-3xl" />
-      <div className="absolute -bottom-24 -right-24 w-80 h-80 bg-sky-300/30 rounded-full blur-3xl" />
-      <div className="relative bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-card w-full max-w-md animate-fade-in border border-gray-100/70">
-        <div className="flex justify-center mb-4">
-          <div className="bg-gradient-to-br from-indigo-600 to-sky-500 text-white rounded-full p-3 shadow-md">
-            <Wallet size={24} />
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-8">
+      <div className="bg-white border border-slate-200 p-8 rounded-lg shadow-subtle w-full max-w-md">
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <div className="bg-blue-600 text-white rounded p-2">
+            <Wallet size={22} />
           </div>
+          <span className="text-xl font-bold text-slate-900 tracking-tight">PayFlow</span>
         </div>
-        <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">
-          Create your <span className="bg-gradient-to-r from-indigo-600 to-sky-500 bg-clip-text text-transparent">PayFlow</span> account
-        </h1>
+
+        <h1 className="text-xl font-bold text-center text-slate-900 mb-1">Create an account</h1>
+        <p className="text-center text-xs text-slate-500 mb-6">Set up your PayFlow enterprise credentials</p>
 
         {error && (
-          <div className="bg-red-50 text-red-600 px-4 py-2 rounded-md mb-4 text-sm border border-red-100">
+          <div className="bg-rose-50 text-rose-700 px-3 py-2 rounded text-xs border border-rose-200 mb-4 font-medium">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
             <div className="relative">
-              <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
-                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded text-sm text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors"
                 placeholder="John Doe"
               />
             </div>
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
             <div className="relative">
-              <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="you@example.com"
+                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded text-sm text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors"
+                placeholder="user@example.com"
               />
             </div>
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Password</label>
             <div className="relative">
-              <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-9 pr-9 py-2 bg-white border border-slate-300 rounded text-sm text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors"
                 placeholder="At least 6 characters"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 tabIndex={-1}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
@@ -107,19 +134,20 @@ export default function RegisterPage() {
               </button>
             </div>
           </div>
+
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-sky-500 text-white py-2.5 rounded-md hover:opacity-90 disabled:opacity-50 font-medium shadow-md"
+            className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-semibold text-sm shadow-subtle transition-colors"
           >
             {loading && <Spinner size={16} />}
-            {loading ? 'Creating account...' : 'Register'}
+            {loading ? 'Creating Account...' : 'Register'}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-4">
+        <p className="text-center text-xs text-slate-500 mt-6">
           Already have an account?{' '}
-          <Link to="/login" className="text-indigo-600 hover:underline font-medium">
+          <Link to="/login" className="text-blue-600 hover:underline font-semibold">
             Sign in
           </Link>
         </p>

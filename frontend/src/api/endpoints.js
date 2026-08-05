@@ -12,9 +12,13 @@ export const paymentApi = {
   getByStatus: (status) => api.get(`/payments/status/${status}`),
   search: (params) => api.get('/payments/search', { params }),
   getHistory: (id) => api.get(`/payments/${id}/history`),
+  retry: (id) => api.post(`/payments/${id}/retry`),
+  rollback: (id) => api.post(`/payments/${id}/rollback`),
 };
 
 export const receivingAccountApi = {
+  getAll: () => api.get('/receiving-account'),
   get: () => api.get('/receiving-account'),
-  save: (data) => api.put('/receiving-account', data),
+  save: (data) => api.post('/receiving-account', data),
+  delete: (id) => api.delete(`/receiving-account/${id}`),
 };
