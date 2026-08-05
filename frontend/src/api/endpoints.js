@@ -10,6 +10,7 @@ export const paymentApi = {
   getAll: () => api.get('/payments'),
   getById: (id) => api.get(`/payments/${id}`),
   getByStatus: (status) => api.get(`/payments/status/${status}`),
+  search: (params) => api.get('/payments/search', { params }),
   getHistory: (id) => api.get(`/payments/${id}/history`),
 };
 
