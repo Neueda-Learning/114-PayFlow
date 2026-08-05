@@ -1,10 +1,10 @@
-package com.flowpay.service;
+package com.payflow.service;
 
-import com.flowpay.dto.ChangePasswordRequest;
-import com.flowpay.exception.BadRequestException;
-import com.flowpay.model.Role;
-import com.flowpay.model.User;
-import com.flowpay.repository.UserRepository;
+import com.payflow.dto.ChangePasswordRequest;
+import com.payflow.exception.BadRequestException;
+import com.payflow.model.Role;
+import com.payflow.model.User;
+import com.payflow.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

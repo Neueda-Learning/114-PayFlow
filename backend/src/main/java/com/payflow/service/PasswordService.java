@@ -1,10 +1,10 @@
-package com.flowpay.service;
+package com.payflow.service;
 
-import com.flowpay.dto.ChangePasswordRequest;
-import com.flowpay.exception.BadRequestException;
-import com.flowpay.exception.ErrorCode;
-import com.flowpay.model.User;
-import com.flowpay.repository.UserRepository;
+import com.payflow.dto.ChangePasswordRequest;
+import com.payflow.exception.BadRequestException;
+import com.payflow.exception.ErrorCode;
+import com.payflow.model.User;
+import com.payflow.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;

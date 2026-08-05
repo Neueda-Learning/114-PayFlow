@@ -1,8 +1,8 @@
-package com.flowpay.controller;
+package com.payflow.controller;
 
-import com.flowpay.dto.ApiResponse;
-import com.flowpay.dto.ChangePasswordRequest;
-import com.flowpay.service.PasswordService;
+import com.payflow.dto.ApiResponse;
+import com.payflow.dto.ChangePasswordRequest;
+import com.payflow.service.PasswordService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
