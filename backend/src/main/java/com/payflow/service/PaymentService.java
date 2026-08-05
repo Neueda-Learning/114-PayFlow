@@ -179,11 +179,22 @@ public class PaymentService {
                 "Payment processed successfully", userEmail, TriggerType.SYSTEM);
         } else {
             // Rollback: refund the reserved amount back to the sender's account
+            addHistory(payment, payment.getStatus(), payment.getStatus(),
+                "Rollback initiated for " + payment.getCurrency() + " " + payment.getAmount()
+                    + " after processing failure",
+                userEmail, TriggerType.SYSTEM);
+
             refundToUserBalance(payment.getUser(), payment.getAmount());
             addHistory(payment, payment.getStatus(), payment.getStatus(),
                 "Refunded " + payment.getCurrency() + " " + payment.getAmount()
                     + " back to sender account after processing failure",
                 userEmail, TriggerType.SYSTEM);
+
+            addHistory(payment, payment.getStatus(), payment.getStatus(),
+                "Rollback completed — " + payment.getCurrency() + " " + payment.getAmount()
+                    + " restored to sender account",
+                userEmail, TriggerType.SYSTEM);
+
             payment.setFailureCode(ErrorCode.PROCESSING_ERROR.name());
             payment.setFailureMessage("Simulated processing failure — amount refunded to your account");
             transition(payment, PaymentStatus.FAILED,

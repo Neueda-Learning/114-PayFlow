@@ -47,10 +47,14 @@ export default function PaymentDetailPage() {
     return entries[entries.length - 1].timestamp;
   };
 
-  // Debit/refund entries are logged as same-status history rows (no state
+  // Debit/rollback entries are logged as same-status history rows (no state
   // transition), so they can be told apart from status changes and styled
-  // distinctly for the customer.
-  const isRefundEvent = (h) => h.oldStatus === h.newStatus && /refund/i.test(h.reason || '');
+  // distinctly for the customer. A rollback spans three separate log lines
+  // (initiated -> refunded -> completed) and each must render as its own
+  // distinct entry in the timeline rather than being merged together.
+  const isRollbackInitiatedEvent = (h) => h.oldStatus === h.newStatus && /rollback initiated/i.test(h.reason || '');
+  const isRefundEvent = (h) => h.oldStatus === h.newStatus && /refunded/i.test(h.reason || '');
+  const isRollbackCompletedEvent = (h) => h.oldStatus === h.newStatus && /rollback completed/i.test(h.reason || '');
   const isDebitEvent = (h) => h.oldStatus === h.newStatus && /debit/i.test(h.reason || '');
   const rollbackEntry = history.find(isRefundEvent);
 
@@ -212,7 +216,9 @@ export default function PaymentDetailPage() {
               <div key={h.id} className="flex items-start gap-3">
                 <div className="flex flex-col items-center">
                   <div className={`w-3 h-3 rounded-full ${
+                    isRollbackInitiatedEvent(h) ? 'bg-amber-400' :
                     isRefundEvent(h) ? 'bg-emerald-500' :
+                    isRollbackCompletedEvent(h) ? 'bg-emerald-600' :
                     isDebitEvent(h) ? 'bg-amber-500' :
                     h.newStatus === 'COMPLETED' ? 'bg-green-500' :
                     h.newStatus === 'FAILED' ? 'bg-red-500' :
@@ -222,7 +228,9 @@ export default function PaymentDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-700">
-                    {isRefundEvent(h) ? '↩️ Rollback / Refund' :
+                    {isRollbackInitiatedEvent(h) ? '⏳ Rollback Initiated' :
+                      isRefundEvent(h) ? '↩️ Refunded' :
+                      isRollbackCompletedEvent(h) ? '✅ Rollback Completed' :
                       isDebitEvent(h) ? '💸 Funds Reserved' :
                       h.oldStatus ? `${h.oldStatus} → ${h.newStatus}` : h.newStatus}
                   </p>
