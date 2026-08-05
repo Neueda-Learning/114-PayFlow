@@ -5,28 +5,27 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
+    fontFamily: {
+      sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+    },
     extend: {
       colors: {
         brand: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
+          50: '#f0fdf4',
+          100: '#dcfce7',
+          500: '#16a34a',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
         },
+        slate: {
+          75: '#f1f5f9',
+          850: '#0f172a',
+        }
       },
       boxShadow: {
-        soft: '0 2px 10px -2px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)',
-        card: '0 4px 24px -8px rgba(79, 70, 229, 0.12)',
-      },
-      keyframes: {
-        fadeIn: {
-          '0%': { opacity: 0, transform: 'translateY(4px)' },
-          '100%': { opacity: 1, transform: 'translateY(0)' },
-        },
-      },
-      animation: {
-        'fade-in': 'fadeIn 0.25s ease-out',
+        subtle: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        card: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)',
       },
     },
   },

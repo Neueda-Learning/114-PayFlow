@@ -19,27 +19,27 @@ function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex">
+    <div className="h-screen w-screen flex overflow-hidden bg-slate-50">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         <Navbar onMenuClick={() => setSidebarOpen(true)} />
         <ToastContainer position="top-right" autoClose={3500} newestOnTop closeOnClick pauseOnHover theme="light" />
-        <main className="flex-1">
-        <Routes>
-          {/* Public */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+        <main className="flex-1 overflow-y-auto">
+          <Routes>
+            {/* Public */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
 
-          {/* Protected */}
-          <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-          <Route path="/payments" element={<ProtectedRoute><PaymentListPage /></ProtectedRoute>} />
-          <Route path="/payments/create" element={<ProtectedRoute><CreatePaymentPage /></ProtectedRoute>} />
-          <Route path="/payments/:id" element={<ProtectedRoute><PaymentDetailPage /></ProtectedRoute>} />
-          <Route path="/receiving-account" element={<ProtectedRoute><ReceivingAccountPage /></ProtectedRoute>} />
+            {/* Protected */}
+            <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+            <Route path="/payments" element={<ProtectedRoute><PaymentListPage /></ProtectedRoute>} />
+            <Route path="/payments/create" element={<ProtectedRoute><CreatePaymentPage /></ProtectedRoute>} />
+            <Route path="/payments/:id" element={<ProtectedRoute><PaymentDetailPage /></ProtectedRoute>} />
+            <Route path="/receiving-account" element={<ProtectedRoute><ReceivingAccountPage /></ProtectedRoute>} />
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </main>
         <Footer />
       </div>
