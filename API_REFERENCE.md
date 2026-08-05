@@ -4,7 +4,7 @@ This document serves as the contract for the REST APIs provided by the FlowPay b
 
 ## Interactive Docs
 Swagger/OpenAPI UI is available at:
-`http://localhost:3000/swagger-ui/index.html` (or `http://localhost:8080/swagger-ui.html`)
+`http://localhost:3000/swagger-ui/index.html` (or `http://localhost:8081/swagger-ui.html`)
 
 ---
 
@@ -18,7 +18,7 @@ Swagger/OpenAPI UI is available at:
 ### Register
 
 ```bash
-curl -X POST http://localhost:8080/api/auth/register \
+curl -X POST http://localhost:8081/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "fullName": "John Doe",
@@ -45,7 +45,7 @@ curl -X POST http://localhost:8080/api/auth/register \
 ### Login
 
 ```bash
-curl -X POST http://localhost:8080/api/auth/login \
+curl -X POST http://localhost:8081/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "john@example.com",
@@ -69,7 +69,7 @@ curl -X POST http://localhost:8080/api/auth/login \
 ### Create Payment
 
 ```bash
-curl -X POST http://localhost:8080/api/payments \
+curl -X POST http://localhost:8081/api/payments \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{

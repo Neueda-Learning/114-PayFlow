@@ -33,7 +33,7 @@ services:
       JWT_EXPIRATION: ${JWT_EXPIRATION}
       SERVER_PORT: ${SERVER_PORT}
     ports:
-      - "8080:8080"
+      - "8081:8081"
 
   frontend:
     build:
