@@ -10,14 +10,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Core payment business logic — validation, processing, retry, and audit trail.
+ * Core payment business logic — validation, processing, retry, manual rollback, and audit trail.
  */
 @Service
 @RequiredArgsConstructor
@@ -31,40 +30,36 @@ public class PaymentService {
 
     private static final Set<String> SUPPORTED_CURRENCIES = Set.of("INR");
     private static final BigDecimal INITIAL_BALANCE = new BigDecimal("100000.00");
-        private static final Map<PaymentStatus, Set<PaymentStatus>> VALID_TRANSITIONS = Map.of(
-            PaymentStatus.CREATED, Set.of(PaymentStatus.VALIDATED, PaymentStatus.FAILED),
-            PaymentStatus.VALIDATED, Set.of(PaymentStatus.SENT, PaymentStatus.FAILED),
-            PaymentStatus.SENT, Set.of(PaymentStatus.COMPLETED, PaymentStatus.FAILED),
-            PaymentStatus.FAILED, Set.of(),
-            PaymentStatus.COMPLETED, Set.of()
-        );
-    // Counts processed transactions so every 3rd one is simulated as a failure.
-    private final AtomicLong transactionCounter = new AtomicLong(0);
+    private static final int MAX_RETRIES = 3;
+    private static final Map<PaymentStatus, Set<PaymentStatus>> VALID_TRANSITIONS = Map.of(
+        PaymentStatus.CREATED, Set.of(PaymentStatus.VALIDATED, PaymentStatus.FAILED),
+        PaymentStatus.VALIDATED, Set.of(PaymentStatus.SENT, PaymentStatus.FAILED),
+        PaymentStatus.SENT, Set.of(PaymentStatus.COMPLETED, PaymentStatus.FAILED),
+        PaymentStatus.FAILED, Set.of(PaymentStatus.CREATED),
+        PaymentStatus.COMPLETED, Set.of()
+    );
+    
+    /** Counter ensuring exactly 1 in 3 payments fails for demonstration/testing */
+    private static final AtomicInteger PAYMENT_COUNTER = new AtomicInteger(0);
 
     // ──────────────── CREATE ────────────────
 
     @Transactional
     public PaymentResponse createPayment(CreatePaymentRequest request, String userEmail) {
-        // Duplicate detection via idempotency key
         if (paymentRepository.existsByIdempotencyKey(request.getIdempotencyKey())) {
             Payment existing = paymentRepository.findByIdempotencyKey(request.getIdempotencyKey())
                     .orElseThrow();
             return toResponse(existing);
         }
 
-        // The receiver is always the configured receiving account, never a
-        // value supplied by the client — this prevents payments being
-        // redirected to an arbitrary account.
-        applyReceivingAccount(request);
-
-        // Validate business rules
-        validatePayment(request);
-
         User user = userRepository.findByEmail(userEmail)
             .orElseThrow(() -> new ResourceNotFoundException(
                 ErrorCode.USER_NOT_FOUND,
                 "User not found"));
         ensureBankProfile(user);
+
+        applyReceivingAccount(request, user);
+        validatePayment(request);
 
         Payment payment = Payment.builder()
                 .idempotencyKey(request.getIdempotencyKey())
@@ -80,14 +75,15 @@ public class PaymentService {
                 .accountHolderName(request.getAccountHolderName())
                 .paymentMethod(request.getPaymentMethod())
                 .status(PaymentStatus.CREATED)
+                .fundsDebited(false)
+                .refunded(false)
                 .user(user)
                 .build();
 
         paymentRepository.save(payment);
-            addHistory(payment, null, PaymentStatus.CREATED, "Payment created", userEmail, TriggerType.USER);
+        addHistory(payment, null, PaymentStatus.CREATED, "Payment created", userEmail, TriggerType.USER);
 
-        // Run through validation → processing → completion
-            processPaymentLifecycle(payment, userEmail);
+        processPaymentLifecycle(payment, userEmail);
 
         return toResponse(payment);
     }
@@ -111,136 +107,186 @@ public class PaymentService {
                 .toList();
     }
 
-    /**
-     * Flexible search across status, amount range, and date range. Any
-     * combination of filters may be omitted (null) to broaden the search.
-     */
-    public List<PaymentResponse> searchPayments(PaymentStatus status, BigDecimal minAmount,
-                                                 BigDecimal maxAmount, LocalDateTime from,
-                                                 LocalDateTime to) {
-        if (minAmount != null && maxAmount != null && minAmount.compareTo(maxAmount) > 0) {
-            throw new BadRequestException(ErrorCode.INVALID_AMOUNT,
-                    "minAmount cannot be greater than maxAmount");
-        }
-        if (from != null && to != null && from.isAfter(to)) {
-            throw new BadRequestException(ErrorCode.VALIDATION_FAILED,
-                    "'from' date cannot be after 'to' date");
-        }
-        return paymentRepository.search(status, minAmount, maxAmount, from, to).stream()
-                .map(this::toResponse)
-                .toList();
-    }
-
     public List<PaymentHistoryResponse> getPaymentHistory(Long paymentId) {
-        // Verify payment exists
         findPaymentOrThrow(paymentId);
         return historyRepository.findByPaymentIdOrderByTimestampAsc(paymentId).stream()
                 .map(this::toHistoryResponse)
                 .toList();
     }
 
+    // ──────────────── RETRY & ROLLBACK ────────────────
+
+    @Transactional
+    public PaymentResponse retryPayment(Long id, String userEmail) {
+        Payment payment = findPaymentOrThrow(id);
+
+        if (payment.getStatus() != PaymentStatus.FAILED) {
+            throw new BadRequestException(ErrorCode.INVALID_STATUS_TRANSITION,
+                    "Only FAILED payments can be retried");
+        }
+
+        if (payment.getRetryCount() >= MAX_RETRIES) {
+            throw new BadRequestException(ErrorCode.MAX_RETRY_EXCEEDED,
+                    "Maximum retry attempts (" + MAX_RETRIES + ") reached");
+        }
+
+        payment.setRetryCount(payment.getRetryCount() + 1);
+        payment.setFailureCode(null);
+        payment.setFailureMessage(null);
+
+        transition(payment, PaymentStatus.CREATED,
+                "Retry attempt #" + payment.getRetryCount(), userEmail, TriggerType.RETRY);
+
+        processPaymentLifecycle(payment, userEmail);
+
+        return toResponse(payment);
+    }
+
+    /**
+     * Manual Rollback Endpoint:
+     * When a payment fails, money is debited from sender but NOT credited to receiver.
+     * Clicking Rollback adds money BACK ONLY to sender's account!
+     */
+    @Transactional
+    public PaymentResponse rollbackPayment(Long id, String userEmail) {
+        Payment payment = findPaymentOrThrow(id);
+
+        if (payment.getStatus() != PaymentStatus.FAILED) {
+            throw new BadRequestException(ErrorCode.INVALID_STATUS_TRANSITION,
+                    "Only FAILED payments can be rolled back");
+        }
+
+        if (payment.isRefunded()) {
+            throw new BadRequestException(ErrorCode.INVALID_STATUS_TRANSITION,
+                    "Payment funds have already been rolled back/refunded to sender");
+        }
+
+        if (!payment.isFundsDebited()) {
+            throw new BadRequestException(ErrorCode.INVALID_STATUS_TRANSITION,
+                    "No debited funds exist for this payment to roll back");
+        }
+
+        User sender = payment.getUser();
+        sender.setBankBalance(sender.getBankBalance().add(payment.getAmount()));
+        userRepository.save(sender);
+
+        payment.setRefunded(true);
+        payment.setFundsDebited(false);
+        paymentRepository.save(payment);
+
+        addHistory(payment, PaymentStatus.FAILED, PaymentStatus.FAILED,
+                "Rollback initiated by user: " + userEmail, userEmail, TriggerType.USER);
+        addHistory(payment, PaymentStatus.FAILED, PaymentStatus.FAILED,
+                "Refunded INR " + payment.getAmount() + " back to sender bank account balance", userEmail, TriggerType.SYSTEM);
+        addHistory(payment, PaymentStatus.FAILED, PaymentStatus.FAILED,
+                "Rollback completed successfully (Receiver balance unchanged)", userEmail, TriggerType.SYSTEM);
+
+        log.info("Successfully rolled back payment #{} for sender {}. Sender balance restored to INR {}", id, userEmail, sender.getBankBalance());
+
+        return toResponse(payment);
+    }
+
     // ──────────────── LIFECYCLE ────────────────
 
     /**
-         * Simulates: CREATED → VALIDATED → SENT → COMPLETED or FAILED
+     * Simulates: CREATED → VALIDATED → SENT → COMPLETED or FAILED
      */
     @Transactional
-        protected void processPaymentLifecycle(Payment payment, String userEmail) {
+    protected void processPaymentLifecycle(Payment payment, String userEmail) {
         // Step 1: CREATED → VALIDATED
         transition(payment, PaymentStatus.VALIDATED,
             "Payment validated", userEmail, TriggerType.SYSTEM);
 
         // Step 2: VALIDATED → SENT
-        // Funds are reserved (debited) upfront, before the send attempt, so that
-        // if the transaction fails below, the exact amount can be rolled back
-        // (credited back) to the sender's account.
-        if (!hasSufficientBalance(payment.getUser(), payment.getAmount())) {
-            payment.setFailureCode(ErrorCode.INSUFFICIENT_FUNDS.name());
-            payment.setFailureMessage("Insufficient balance in user bank account");
-            transition(payment, PaymentStatus.FAILED,
-                "Payment failed due to insufficient funds", userEmail, TriggerType.SYSTEM);
-            return;
-        }
-
-        deductFromUserBalance(payment.getUser(), payment.getAmount());
-        addHistory(payment, payment.getStatus(), payment.getStatus(),
-            "Debited " + payment.getCurrency() + " " + payment.getAmount()
-                + " from sender account (reserved pending completion)",
-            userEmail, TriggerType.SYSTEM);
         transition(payment, PaymentStatus.SENT,
             "Payment sent to destination system", userEmail, TriggerType.SYSTEM);
 
-        // Step 3: Simulate finalization — every 3rd transaction fails
-        boolean success = transactionCounter.incrementAndGet() % 3 != 0;
+        // Step 3: Exactly 1 in 3 payments fails (every 3rd payment)
+        boolean success = (PAYMENT_COUNTER.incrementAndGet() % 3 != 0);
 
         if (success) {
+            if (!payment.isFundsDebited()) {
+                if (!hasSufficientBalance(payment.getUser(), payment.getAmount())) {
+                    payment.setFailureCode(ErrorCode.INSUFFICIENT_FUNDS.name());
+                    payment.setFailureMessage("Insufficient balance in user bank account");
+                    transition(payment, PaymentStatus.FAILED,
+                        "Payment failed due to insufficient funds", userEmail, TriggerType.SYSTEM);
+                    return;
+                }
+                deductFromUserBalance(payment.getUser(), payment.getAmount());
+                payment.setFundsDebited(true);
+            }
+
+            // Payment succeeded: Credit destination receiving account
             receivingAccountService.creditBalance(payment.getAmount());
             transition(payment, PaymentStatus.COMPLETED,
-                "Payment processed successfully", userEmail, TriggerType.SYSTEM);
+                "Payment processed successfully — Funds delivered to receiver", userEmail, TriggerType.SYSTEM);
         } else {
-            // Rollback: refund the reserved amount back to the sender's account
-            addHistory(payment, payment.getStatus(), payment.getStatus(),
-                "Rollback initiated for " + payment.getCurrency() + " " + payment.getAmount()
-                    + " after processing failure",
-                userEmail, TriggerType.SYSTEM);
-
-            refundToUserBalance(payment.getUser(), payment.getAmount());
-            addHistory(payment, payment.getStatus(), payment.getStatus(),
-                "Refunded " + payment.getCurrency() + " " + payment.getAmount()
-                    + " back to sender account after processing failure",
-                userEmail, TriggerType.SYSTEM);
-
-            addHistory(payment, payment.getStatus(), payment.getStatus(),
-                "Rollback completed — " + payment.getCurrency() + " " + payment.getAmount()
-                    + " restored to sender account",
-                userEmail, TriggerType.SYSTEM);
+            // Payment failed: Deduct from sender, DO NOT credit receiver!
+            if (!payment.isFundsDebited()) {
+                if (hasSufficientBalance(payment.getUser(), payment.getAmount())) {
+                    deductFromUserBalance(payment.getUser(), payment.getAmount());
+                    payment.setFundsDebited(true);
+                    addHistory(payment, PaymentStatus.SENT, PaymentStatus.SENT,
+                        "Debited INR " + payment.getAmount() + " from sender account before processing failure", userEmail, TriggerType.SYSTEM);
+                }
+            }
 
             payment.setFailureCode(ErrorCode.PROCESSING_ERROR.name());
-            payment.setFailureMessage("Simulated processing failure — amount refunded to your account");
+            payment.setFailureMessage("Simulated processing failure — Funds debited from sender, NOT added to receiver balance. Manual Rollback available.");
+            payment.setRefunded(false);
             transition(payment, PaymentStatus.FAILED,
-                "Simulated processing failure — amount refunded", userEmail, TriggerType.SYSTEM);
+                "Simulated processing failure — Sender debited, receiver untouched. Click Rollback to refund sender.", userEmail, TriggerType.SYSTEM);
         }
     }
 
     // ──────────────── VALIDATION ────────────────
 
     private void validatePayment(CreatePaymentRequest request) {
-        // Positive amount — already handled by @DecimalMin, but double-check
         if (request.getAmount().signum() <= 0) {
             throw new BadRequestException(ErrorCode.INVALID_AMOUNT,
                 "Payment amount must be positive");
         }
 
-        // Supported currency
         if (!SUPPORTED_CURRENCIES.contains(request.getCurrency().toUpperCase())) {
             throw new BadRequestException(ErrorCode.INVALID_CURRENCY,
                 "Unsupported currency: " + request.getCurrency()
                     + ". Supported: " + SUPPORTED_CURRENCIES);
         }
 
-        // Sender ≠ Receiver
-        if (request.getSenderAccount().equalsIgnoreCase(request.getReceiverAccount())) {
+        if (request.getSenderAccount() != null && request.getSenderAccount().equalsIgnoreCase(request.getReceiverAccount())) {
             throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
                 "Sender and receiver accounts must be different");
         }
 
-        // Basic payment method validation
         validatePaymentMethod(request);
     }
 
-    /** Overwrites the request's receiver account with the configured receiving account. */
-    private void applyReceivingAccount(CreatePaymentRequest request) {
+    private void applyReceivingAccount(CreatePaymentRequest request, User user) {
         var receivingAccount = receivingAccountService.getReceivingAccount();
-        request.setReceiverAccount(request.getPaymentMethod() == PaymentMethod.UPI
-                ? receivingAccount.getUpiId()
-                : receivingAccount.getAccountNumber());
+        if (request.getPaymentMethod() == PaymentMethod.UPI) {
+            String receiverUpi = receivingAccount.getUpiId();
+            request.setReceiverAccount(receiverUpi);
+
+            String defaultSenderUpi = user.getEmail() != null && user.getEmail().contains("@")
+                    ? user.getEmail().split("@")[0] + "@payflow"
+                    : "user@payflow";
+
+            if (isBlank(request.getSenderAccount()) || request.getSenderAccount().equalsIgnoreCase(receiverUpi)) {
+                request.setSenderAccount(defaultSenderUpi);
+            }
+        } else {
+            request.setReceiverAccount(receivingAccount.getAccountNumber());
+            if (isBlank(request.getSenderAccount()) && request.getPaymentMethod() != PaymentMethod.CARD) {
+                request.setSenderAccount(user.getBankAccountNumber());
+            }
+        }
     }
 
     private void validatePaymentMethod(CreatePaymentRequest request) {
         switch (request.getPaymentMethod()) {
             case CARD -> {
-                // Card number-like sender expected
-                if (request.getSenderAccount().length() < 10) {
+                if (isBlank(request.getSenderAccount()) || request.getSenderAccount().length() < 10) {
                     throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
                             "Card number must be at least 10 digits");
                 }
@@ -253,21 +299,19 @@ public class PaymentService {
                     throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
                             "Card expiry must be in MM/YY format");
                 }
-                if (isBlank(request.getCardCvv()) || !request.getCardCvv().matches("^\\d{3}$")) {
+                if (isBlank(request.getCardCvv()) || !request.getCardCvv().matches("^\\d{3,4}$")) {
                     throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
-                            "CVV must be exactly 3 digits");
+                            "CVV must be 3 or 4 digits");
                 }
             }
             case BANK_TRANSFER -> {
-                // Both accounts should look like account numbers
-                if (request.getSenderAccount().length() < 6
-                        || request.getReceiverAccount().length() < 6) {
+                if (isBlank(request.getSenderAccount()) || request.getSenderAccount().length() < 3) {
                     throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
-                            "Bank account numbers must be at least 6 characters");
+                            "Sender bank account number is required");
                 }
                 if (isBlank(request.getAccountNumber())) {
                     throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
-                            "Account number is required for bank transfer");
+                            "Destination account number is required for bank transfer");
                 }
                 if (isBlank(request.getIfscCode())
                         || !request.getIfscCode().toUpperCase().matches("^[A-Z]{4}0[A-Z0-9]{6}$")) {
@@ -280,11 +324,13 @@ public class PaymentService {
                 }
             }
             case UPI -> {
-                // UPI IDs should contain @
-                if (!request.getSenderAccount().contains("@")
-                        || !request.getReceiverAccount().contains("@")) {
+                if (isBlank(request.getReceiverAccount()) || !request.getReceiverAccount().contains("@")) {
                     throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
-                            "UPI IDs must contain '@' (e.g., user@upi)");
+                            "Receiver UPI ID must contain '@' (e.g., receiver@upi)");
+                }
+                if (isBlank(request.getSenderAccount()) || !request.getSenderAccount().contains("@")) {
+                    throw new BadRequestException(ErrorCode.INVALID_ACCOUNT,
+                            "Sender UPI ID must contain '@' (e.g., user@payflow)");
                 }
             }
         }
@@ -294,11 +340,6 @@ public class PaymentService {
         return value == null || value.trim().isEmpty();
     }
 
-    /**
-     * CVV is validated but never persisted (PCI-DSS: must not be stored after
-     * authorization). Card numbers are masked to only the last 4 digits before
-     * being saved, since the full PAN is not needed after validation.
-     */
     private String maskIfCardNumber(CreatePaymentRequest request) {
         String senderAccount = request.getSenderAccount();
         if (request.getPaymentMethod() != PaymentMethod.CARD) {
@@ -317,12 +358,6 @@ public class PaymentService {
 
     private void deductFromUserBalance(User user, BigDecimal amount) {
         user.setBankBalance(user.getBankBalance().subtract(amount));
-        userRepository.save(user);
-    }
-
-    /** Reverses a prior debit — used to roll back funds when a payment fails after being reserved. */
-    private void refundToUserBalance(User user, BigDecimal amount) {
-        user.setBankBalance(user.getBankBalance().add(amount));
         userRepository.save(user);
     }
 
@@ -401,6 +436,9 @@ public class PaymentService {
                 .failureMessage(p.getFailureMessage())
                 .userBankAccountNumber(p.getUser().getBankAccountNumber())
                 .userBankBalance(p.getUser().getBankBalance())
+                .retryCount(p.getRetryCount())
+                .fundsDebited(p.isFundsDebited())
+                .refunded(p.isRefunded())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())
                 .build();
@@ -412,8 +450,8 @@ public class PaymentService {
                 .oldStatus(h.getOldStatus())
                 .newStatus(h.getNewStatus())
                 .reason(h.getReason())
-            .triggeredBy(h.getTriggeredBy())
-            .triggerType(h.getTriggerType())
+                .triggeredBy(h.getTriggeredBy())
+                .triggerType(h.getTriggerType())
                 .timestamp(h.getTimestamp())
                 .build();
     }

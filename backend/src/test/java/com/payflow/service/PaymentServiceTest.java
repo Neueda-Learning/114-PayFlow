@@ -4,7 +4,6 @@ import com.payflow.dto.CreatePaymentRequest;
 import com.payflow.dto.PaymentResponse;
 import com.payflow.dto.ReceivingAccountResponse;
 import com.payflow.exception.BadRequestException;
-import com.payflow.exception.DuplicateResourceException;
 import com.payflow.exception.ResourceNotFoundException;
 import com.payflow.model.*;
 import com.payflow.repository.*;
@@ -28,12 +27,17 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceTest {
 
-    @Mock private PaymentRepository paymentRepository;
-    @Mock private PaymentHistoryRepository historyRepository;
-    @Mock private UserRepository userRepository;
-    @Mock private ReceivingAccountService receivingAccountService;
+    @Mock
+    private PaymentRepository paymentRepository;
+    @Mock
+    private PaymentHistoryRepository historyRepository;
+    @Mock
+    private UserRepository userRepository;
+    @Mock
+    private ReceivingAccountService receivingAccountService;
 
-    @InjectMocks private PaymentService paymentService;
+    @InjectMocks
+    private PaymentService paymentService;
 
     private User testUser;
     private CreatePaymentRequest validRequest;
@@ -45,8 +49,8 @@ class PaymentServiceTest {
                 .email("test@example.com")
                 .fullName("Test User")
                 .role(Role.USER)
-            .bankAccountNumber("FP123456789012")
-            .bankBalance(new BigDecimal("100000.00"))
+                .bankAccountNumber("FP123456789012")
+                .bankBalance(new BigDecimal("100000.00"))
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -139,8 +143,7 @@ class PaymentServiceTest {
             validRequest.setCurrency("XYZ");
             when(paymentRepository.existsByIdempotencyKey(anyString())).thenReturn(false);
 
-            assertThatThrownBy(() ->
-                    paymentService.createPayment(validRequest, "test@example.com"))
+            assertThatThrownBy(() -> paymentService.createPayment(validRequest, "test@example.com"))
                     .isInstanceOf(BadRequestException.class)
                     .hasMessageContaining("Unsupported currency");
         }
@@ -153,8 +156,7 @@ class PaymentServiceTest {
             validRequest.setSenderAccount("0987654321");
             when(paymentRepository.existsByIdempotencyKey(anyString())).thenReturn(false);
 
-            assertThatThrownBy(() ->
-                    paymentService.createPayment(validRequest, "test@example.com"))
+            assertThatThrownBy(() -> paymentService.createPayment(validRequest, "test@example.com"))
                     .isInstanceOf(BadRequestException.class)
                     .hasMessageContaining("different");
         }
@@ -166,8 +168,7 @@ class PaymentServiceTest {
             validRequest.setSenderAccount("invalidupi");
             when(paymentRepository.existsByIdempotencyKey(anyString())).thenReturn(false);
 
-            assertThatThrownBy(() ->
-                    paymentService.createPayment(validRequest, "test@example.com"))
+            assertThatThrownBy(() -> paymentService.createPayment(validRequest, "test@example.com"))
                     .isInstanceOf(BadRequestException.class)
                     .hasMessageContaining("@");
         }
@@ -179,10 +180,76 @@ class PaymentServiceTest {
             validRequest.setSenderAccount("123");
             when(paymentRepository.existsByIdempotencyKey(anyString())).thenReturn(false);
 
-            assertThatThrownBy(() ->
-                    paymentService.createPayment(validRequest, "test@example.com"))
+            assertThatThrownBy(() -> paymentService.createPayment(validRequest, "test@example.com"))
                     .isInstanceOf(BadRequestException.class)
                     .hasMessageContaining("Card number");
+        }
+    }
+
+    // ──────── Retry Tests ────────
+
+    @Nested
+    @DisplayName("Retry Payment")
+    class RetryTests {
+
+        @Test
+        @DisplayName("should reject retry on non-failed payment")
+        void shouldRejectRetryOnNonFailed() {
+            Payment payment = Payment.builder()
+                    .id(1L)
+                    .status(PaymentStatus.COMPLETED)
+                    .user(testUser)
+                    .build();
+            when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+            assertThatThrownBy(() -> paymentService.retryPayment(1L, "test@example.com"))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("FAILED");
+        }
+
+        @Test
+        @DisplayName("should reject retry after max attempts")
+        void shouldRejectRetryAfterMax() {
+            Payment payment = Payment.builder()
+                    .id(1L)
+                    .status(PaymentStatus.FAILED)
+                    .retryCount(3)
+                    .user(testUser)
+                    .build();
+            when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+            assertThatThrownBy(() -> paymentService.retryPayment(1L, "test@example.com"))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("Maximum retry");
+        }
+
+        @Test
+        @DisplayName("should retry failed payment successfully")
+        void shouldRetryFailedPayment() {
+            Payment payment = Payment.builder()
+                    .id(1L)
+                    .idempotencyKey("key-1")
+                    .amount(new BigDecimal("50.00"))
+                    .currency("INR")
+                    .senderAccount("1234567890")
+                    .receiverAccount("0987654321")
+                    .purpose("Utility bill")
+                    .paymentMethod(PaymentMethod.CARD)
+                    .status(PaymentStatus.FAILED)
+                    .retryCount(1)
+                    .user(testUser)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+
+            when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+            when(paymentRepository.save(any(Payment.class))).thenAnswer(i -> i.getArgument(0));
+            when(historyRepository.save(any(PaymentHistory.class))).thenReturn(null);
+
+            PaymentResponse response = paymentService.retryPayment(1L, "test@example.com");
+
+            assertThat(response).isNotNull();
+            assertThat(response.getRetryCount()).isEqualTo(2);
+            assertThat(response.getStatus()).isIn(PaymentStatus.COMPLETED, PaymentStatus.FAILED);
         }
     }
 
@@ -216,8 +283,7 @@ class PaymentServiceTest {
             when(paymentRepository.findByStatusOrderByCreatedAtDesc(PaymentStatus.COMPLETED))
                     .thenReturn(List.of());
 
-            List<PaymentResponse> result =
-                    paymentService.getPaymentsByStatus(PaymentStatus.COMPLETED);
+            List<PaymentResponse> result = paymentService.getPaymentsByStatus(PaymentStatus.COMPLETED);
             assertThat(result).isEmpty();
             verify(paymentRepository).findByStatusOrderByCreatedAtDesc(PaymentStatus.COMPLETED);
         }

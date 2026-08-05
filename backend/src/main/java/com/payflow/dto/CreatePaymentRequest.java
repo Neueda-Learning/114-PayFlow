@@ -17,11 +17,10 @@ public class CreatePaymentRequest {
     @Size(min = 3, max = 3, message = "Currency must be a 3-letter code (INR)")
     private String currency;
 
-    @NotBlank(message = "Sender account is required")
+    // Sender account (card number, bank account, or sender UPI ID)
     private String senderAccount;
 
-    // Ignored if provided by the client; the server always overwrites this
-    // with the configured receiving account (see ReceivingAccountService).
+    // Receiver account (overwritten by ReceivingAccountService with destination account/UPI ID)
     private String receiverAccount;
 
     @NotNull(message = "Payment method is required")
