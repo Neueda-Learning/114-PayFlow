@@ -1,52 +1,38 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Menu, Wallet } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export default function Navbar() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+export default function Navbar({ onMenuClick }) {
+  const { user } = useAuth();
 
   if (!user) return null;
 
   return (
-    <nav className="bg-white shadow-sm border-b border-gray-200">
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <Link to="/" className="text-xl font-bold text-indigo-600">
-          PayFlow
-        </Link>
-        <div className="flex items-center gap-4">
-          <Link to="/" className="text-gray-600 hover:text-indigo-600 text-sm font-medium">
-            Dashboard
-          </Link>
-          <Link to="/payments" className="text-gray-600 hover:text-indigo-600 text-sm font-medium">
-            Payments
-          </Link>
-          <Link to="/payments/create" className="text-gray-600 hover:text-indigo-600 text-sm font-medium">
-            New Payment
-          </Link>
-          <Link to="/receiving-account" className="text-gray-600 hover:text-indigo-600 text-sm font-medium">
-            Receiving Account
-          </Link>
-          <div className="text-xs text-gray-500">
-            <span className="font-medium">A/C:</span> {user.bankAccountNumber || '-'}
+    <header className="glass border-b border-gray-100 sticky top-0 z-30">
+      <div className="flex items-center gap-3 px-4 sm:px-6 h-16">
+        <button
+          className="lg:hidden p-2 -ml-2 text-gray-500 hover:text-indigo-600 rounded-md hover:bg-gray-50"
+          onClick={onMenuClick}
+          aria-label="Open menu"
+        >
+          <Menu size={22} />
+        </button>
+
+        <div className="hidden lg:block">
+          <p className="text-xs text-gray-400 leading-tight">Welcome back,</p>
+          <p className="text-sm font-semibold text-gray-700 leading-tight">{user.fullName}</p>
+        </div>
+
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 text-xs sm:text-sm font-medium text-green-700 bg-green-50 border border-green-100 px-2.5 sm:px-3 py-1.5 rounded-full whitespace-nowrap">
+            <Wallet size={14} />
+            INR {user.bankBalance ?? '-'}
           </div>
-          <div className="text-xs text-green-700 bg-green-50 border border-green-100 px-2 py-1 rounded">
-            Balance: INR {user.bankBalance ?? '-'}
+          <div className="hidden sm:flex w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-sky-400 text-white items-center justify-center text-sm font-semibold shrink-0">
+            {user.fullName?.charAt(0)?.toUpperCase() || 'U'}
           </div>
-          <span className="text-sm text-gray-400">|</span>
-          <span className="text-sm text-gray-500">{user.fullName}</span>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-red-500 hover:text-red-700 font-medium"
-          >
-            Logout
-          </button>
         </div>
       </div>
-    </nav>
+    </header>
   );
 }
+

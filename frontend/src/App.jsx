@@ -1,7 +1,12 @@
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
+import Sidebar from './components/Sidebar';
+import Footer from './components/Footer';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
@@ -10,11 +15,16 @@ import PaymentListPage from './pages/PaymentListPage';
 import PaymentDetailPage from './pages/PaymentDetailPage';
 import ReceivingAccountPage from './pages/ReceivingAccountPage';
 
-export default function App() {
+function AppShell() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Navbar />
+    <div className="min-h-screen flex">
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <div className="flex-1 flex flex-col min-w-0">
+        <Navbar onMenuClick={() => setSidebarOpen(true)} />
+        <ToastContainer position="top-right" autoClose={3500} newestOnTop closeOnClick pauseOnHover theme="light" />
+        <main className="flex-1">
         <Routes>
           {/* Public */}
           <Route path="/login" element={<LoginPage />} />
@@ -30,6 +40,18 @@ export default function App() {
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </main>
+        <Footer />
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppShell />
       </AuthProvider>
     </BrowserRouter>
   );

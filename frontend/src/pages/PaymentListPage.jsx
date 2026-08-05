@@ -1,6 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import { Plus, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { paymentApi } from '../api/endpoints';
+import Spinner from '../components/Spinner';
+import EmptyState from '../components/EmptyState';
+import StatusBadge from '../components/StatusBadge';
+
+const PAGE_SIZE = 10;
 
 export default function PaymentListPage() {
   const navigate = useNavigate();
@@ -12,9 +19,11 @@ export default function PaymentListPage() {
   const [toDate, setToDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     loadPayments();
+    setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
@@ -39,9 +48,12 @@ export default function PaymentListPage() {
           : await paymentApi.getByStatus(statusFilter);
       }
       setPayments(res.data.data || []);
+      setPage(1);
     } catch (err) {
       console.error('Failed to load payments', err);
-      setError(err.response?.data?.message || 'Failed to load payments');
+      const message = err.response?.data?.message || 'Failed to load payments';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -60,26 +72,22 @@ export default function PaymentListPage() {
     setTimeout(loadPayments, 0);
   };
 
-  const statusColor = (status) => {
-    const colors = {
-      CREATED: 'bg-gray-100 text-gray-700',
-      VALIDATED: 'bg-blue-100 text-blue-700',
-      SENT: 'bg-yellow-100 text-yellow-700',
-      COMPLETED: 'bg-green-100 text-green-700',
-      FAILED: 'bg-red-100 text-red-700',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-700';
-  };
+  const totalPages = Math.max(1, Math.ceil(payments.length / PAGE_SIZE));
+  const pagedPayments = useMemo(
+    () => payments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [payments, page]
+  );
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="max-w-6xl mx-auto px-4 py-8 animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Payments</h1>
         <Link
           to="/payments/create"
-          className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700"
+          className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-sky-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 shadow-md"
         >
-          + New Payment
+          <Plus size={16} />
+          New Payment
         </Link>
       </div>
 
@@ -147,8 +155,9 @@ export default function PaymentListPage() {
         </div>
         <button
           type="submit"
-          className="bg-indigo-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-700"
+          className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-700"
         >
+          <Search size={14} />
           Apply
         </button>
         <button
@@ -165,12 +174,61 @@ export default function PaymentListPage() {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-soft border border-gray-100/70 overflow-hidden">
         {loading ? (
-          <p className="px-4 py-6 text-gray-400 text-center">Loading...</p>
+          <div className="flex justify-center py-10 text-gray-400"><Spinner size={24} /></div>
         ) : payments.length === 0 ? (
-          <p className="px-4 py-6 text-gray-400 text-center">No payments found</p>
+          <EmptyState
+            title="No payments found"
+            message="Try adjusting your filters, or create a new payment."
+            action={
+              <Link to="/payments/create" className="text-indigo-600 text-sm font-medium hover:underline">
+                + Create a payment
+              </Link>
+            }
+          />
         ) : (
+          <>
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-gray-50">
+            {pagedPayments.map((p) => (
+              <div
+                key={p.id}
+                className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+                onClick={() => navigate(`/payments/${p.id}`)}
+              >
+                <div className="flex items-center justify-between">
+                  <Link
+                    to={`/payments/${p.id}`}
+                    className="text-indigo-600 font-medium text-sm hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    #{p.id}
+                  </Link>
+                  <span className="text-sm font-semibold text-gray-700 whitespace-nowrap">{p.amount} {p.currency}</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1 truncate">{p.senderAccount} to {p.receiverAccount}</p>
+                {p.purpose && <p className="text-xs text-gray-400 mt-0.5 truncate">{p.purpose}</p>}
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-xs text-gray-400">{p.paymentMethod} · {new Date(p.createdAt).toLocaleDateString()}</span>
+                  <div className="flex items-center gap-1">
+                    <StatusBadge status={p.status} />
+                    {p.status === 'FAILED' && p.failureCode === 'PROCESSING_ERROR' && (
+                      <span
+                        title="Debited amount was automatically refunded"
+                        className="px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 whitespace-nowrap"
+                      >
+                        Refunded
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-500">
               <tr>
@@ -185,7 +243,7 @@ export default function PaymentListPage() {
               </tr>
             </thead>
             <tbody>
-              {payments.map((p) => (
+              {pagedPayments.map((p) => (
                 <tr
                   key={p.id}
                   className="border-t border-gray-50 hover:bg-gray-50 cursor-pointer"
@@ -200,7 +258,7 @@ export default function PaymentListPage() {
                       #{p.id}
                     </Link>
                   </td>
-                  <td className="px-4 py-2">{p.amount} {p.currency}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{p.amount} {p.currency}</td>
                   <td className="px-4 py-2 text-gray-600">{p.senderAccount}</td>
                   <td className="px-4 py-2 text-gray-600">{p.receiverAccount}</td>
                   <td className="px-4 py-2 text-gray-600 min-w-[220px] whitespace-normal break-words" title={p.purpose || ''}>
@@ -208,27 +266,54 @@ export default function PaymentListPage() {
                   </td>
                   <td className="px-4 py-2">{p.paymentMethod}</td>
                   <td className="px-4 py-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor(p.status)}`}>
-                      {p.status}
-                    </span>
+                    <StatusBadge status={p.status} />
                     {p.status === 'FAILED' && p.failureCode === 'PROCESSING_ERROR' && (
                       <span
                         title="Debited amount was automatically refunded"
-                        className="ml-1 px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700"
+                        className="ml-1 px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 whitespace-nowrap"
                       >
                         ↩️ Refunded
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-gray-400">
+                  <td className="px-4 py-2 text-gray-400 whitespace-nowrap">
                     {new Date(p.createdAt).toLocaleDateString()}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
+          </>
         )}
       </div>
+
+      {!loading && payments.length > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-xs text-gray-400">
+            Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, payments.length)} of {payments.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="p-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              aria-label="Next page"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
