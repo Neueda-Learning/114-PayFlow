@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { paymentApi } from '../api/endpoints';
+import Spinner from '../components/Spinner';
+import StatusBadge from '../components/StatusBadge';
 
 export default function PaymentDetailPage() {
   const { id } = useParams();
@@ -68,13 +71,19 @@ export default function PaymentDetailPage() {
 
   const paymentComment = payment?.purpose || payment?.comment || payment?.description || '-';
 
-  if (loading) return <div className="text-center py-8 text-gray-400">Loading...</div>;
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-400">
+      <Spinner size={24} />
+      <p className="text-sm">Loading payment...</p>
+    </div>
+  );
   if (!payment) return <div className="text-center py-8 text-red-500">{error || 'Payment not found'}</div>;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <Link to="/payments" className="text-indigo-600 hover:underline text-sm mb-4 inline-block">
-        ← Back to Payments
+    <div className="max-w-4xl mx-auto px-4 py-8 animate-fade-in">
+      <Link to="/payments" className="flex items-center gap-1 text-indigo-600 hover:underline text-sm mb-4 w-fit">
+        <ArrowLeft size={14} />
+        Back to Payments
       </Link>
 
       <div className="flex items-center justify-between mb-6">
@@ -103,7 +112,7 @@ export default function PaymentDetailPage() {
       )}
 
       {/* Payment Details */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mb-6">
+      <div className="bg-white/90 backdrop-blur-sm p-6 rounded-xl shadow-soft border border-gray-100/70 mb-6">
         <div className="mb-4 rounded-md border border-indigo-100 bg-indigo-50 p-3">
           <p className="text-xs text-indigo-500 uppercase">Purpose / Comment</p>
           <p className="text-sm text-indigo-900 font-medium">{paymentComment}</p>
@@ -116,9 +125,7 @@ export default function PaymentDetailPage() {
           </div>
           <div>
             <p className="text-xs text-gray-400 uppercase">Status</p>
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor(payment.status)}`}>
-              {payment.status}
-            </span>
+            <StatusBadge status={payment.status} />
           </div>
           <div>
             <p className="text-xs text-gray-400 uppercase">Method</p>
@@ -191,7 +198,7 @@ export default function PaymentDetailPage() {
       </div>
 
       {/* Lifecycle Timestamps */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mb-6">
+      <div className="bg-white/90 backdrop-blur-sm p-6 rounded-xl shadow-soft border border-gray-100/70 mb-6">
         <h2 className="font-semibold text-gray-700 mb-4">Lifecycle Timestamps</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {lifecycleEvents.map((event) => (
@@ -206,7 +213,7 @@ export default function PaymentDetailPage() {
       </div>
 
       {/* Audit History Timeline */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+      <div className="bg-white/90 backdrop-blur-sm p-6 rounded-xl shadow-soft border border-gray-100/70">
         <h2 className="font-semibold text-gray-700 mb-4">Payment History</h2>
         {history.length === 0 ? (
           <p className="text-gray-400">No history available</p>

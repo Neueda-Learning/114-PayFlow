@@ -1,7 +1,32 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import { Wallet, AlertTriangle, Send } from 'lucide-react';
 import { paymentApi, receivingAccountApi } from '../api/endpoints';
 import { useAuth } from '../context/AuthContext';
+import Spinner from '../components/Spinner';
+
+const IFSC_REGEX = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const UPI_REGEX = /^[\w.+-]+@[\w.-]+$/;
+const EXPIRY_REGEX = /^(0[1-9]|1[0-2])\/\d{2}$/;
+
+function validateForm(form) {
+  if (!form.amount || parseFloat(form.amount) <= 0) return 'Enter a valid amount greater than 0';
+  if (!form.purpose.trim()) return 'Purpose / comment is required';
+
+  if (form.paymentMethod === 'CARD') {
+    if (!/^\d{12,19}$/.test(form.senderAccount.replace(/\s/g, ''))) return 'Card number must be 12-19 digits';
+    if (!EXPIRY_REGEX.test(form.cardExpiry)) return 'Card expiry must be in MM/YY format';
+    if (!/^\d{3,4}$/.test(form.cardCvv)) return 'CVV must be 3 or 4 digits';
+  } else if (form.paymentMethod === 'BANK_TRANSFER') {
+    if (!/^\d{6,20}$/.test(form.accountNumber)) return 'Account number must be 6-20 digits';
+    if (!IFSC_REGEX.test(form.ifscCode.toUpperCase())) return 'IFSC code format is invalid (e.g. HDFC0123456)';
+    if (!form.accountHolderName.trim()) return 'Account holder name is required';
+  } else if (form.paymentMethod === 'UPI') {
+    if (!UPI_REGEX.test(form.senderAccount)) return 'Enter a valid UPI ID (e.g. name@bank)';
+  }
+  return null;
+}
 
 export default function CreatePaymentPage() {
   const navigate = useNavigate();
@@ -49,6 +74,14 @@ export default function CreatePaymentPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    const validationError = validateForm(form);
+    if (validationError) {
+      setError(validationError);
+      toast.error(validationError);
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = { ...form, amount: parseFloat(form.amount) };
@@ -57,25 +90,33 @@ export default function CreatePaymentPage() {
         bankAccountNumber: res.data.data.userBankAccountNumber,
         bankBalance: res.data.data.userBankBalance,
       });
+      toast.success('Payment submitted successfully');
       navigate(`/payments/${res.data.data.id}`);
     } catch (err) {
       const code = err.response?.data?.errorCode;
       const message = err.response?.data?.message || 'Failed to create payment';
-      setError(code ? `${code}: ${message}` : message);
+      const fullMessage = code ? `${code}: ${message}` : message;
+      setError(fullMessage);
+      toast.error(fullMessage);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
+    <div className="max-w-2xl mx-auto px-4 py-8 animate-fade-in">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Create Payment</h1>
 
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-4">
+      <div className="bg-white/90 backdrop-blur-sm p-4 rounded-xl shadow-soft border border-gray-100/70 mb-4 flex items-center gap-4">
+        <div className="bg-indigo-50 text-indigo-600 rounded-full p-3">
+          <Wallet size={20} />
+        </div>
+        <div>
         <p className="text-sm text-gray-500">Your Bank Account</p>
         <p className="text-sm font-semibold text-gray-800">{user?.bankAccountNumber || '-'}</p>
         <p className="text-sm text-gray-500 mt-2">Available Balance</p>
         <p className="text-lg font-bold text-green-700">INR {user?.bankBalance ?? '-'}</p>
+        </div>
       </div>
 
       {receivingAccount ? (
@@ -85,20 +126,23 @@ export default function CreatePaymentPage() {
           <p className="text-sm text-gray-800">UPI: {receivingAccount.upiId}</p>
         </div>
       ) : (
-        <div className="bg-yellow-50 text-yellow-700 px-4 py-2 rounded mb-4 text-sm">
-          {receivingAccountError} Please{' '}
-          <Link to="/receiving-account" className="underline font-medium">
-            configure a receiving account
-          </Link>{' '}
-          before sending a payment.
+        <div className="bg-yellow-50 text-yellow-700 px-4 py-2 rounded mb-4 text-sm flex items-start gap-2">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <span>
+            {receivingAccountError} Please{' '}
+            <Link to="/receiving-account" className="underline font-medium">
+              configure a receiving account
+            </Link>{' '}
+            before sending a payment.
+          </span>
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 text-red-600 px-4 py-2 rounded mb-4 text-sm">{error}</div>
+        <div className="bg-red-50 text-red-600 px-4 py-2 rounded mb-4 text-sm border border-red-100">{error}</div>
       )}
 
-      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 space-y-4">
+      <form onSubmit={handleSubmit} className="bg-white/90 backdrop-blur-sm p-6 rounded-xl shadow-soft border border-gray-100/70 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
@@ -250,8 +294,9 @@ export default function CreatePaymentPage() {
         <button
           type="submit"
           disabled={loading || !receivingAccount}
-          className="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50 font-medium"
+          className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50 font-medium"
         >
+          {loading ? <Spinner size={16} /> : <Send size={16} />}
           {loading ? 'Processing...' : 'Submit Payment'}
         </button>
       </form>
