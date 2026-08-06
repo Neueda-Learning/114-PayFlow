@@ -1,7 +1,7 @@
 # 🏛️ Architecture & System Design
 
 ## Overview
-FlowPay is built using a modern, scalable architecture splitting the frontend and backend into distinct layers, communicating via RESTful APIs.
+PayFlow is built using a modern, scalable architecture splitting the frontend and backend into distinct layers, communicating via RESTful APIs.
 
 ```mermaid
 graph TB

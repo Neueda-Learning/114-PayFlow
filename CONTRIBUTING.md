@@ -1,6 +1,6 @@
 # 🤝 Contributing & Developer Guide
 
-Welcome to FlowPay! This document outlines how to navigate the codebase, run tests, and understand team contributions.
+Welcome to PayFlow! This document outlines how to navigate the codebase, run tests, and understand team contributions.
 
 ## 📁 Project Structure
 
@@ -50,30 +50,32 @@ cd backend
 
 This project was built as a 1-week Agile Sprint project (July 29 - August 6, 2026) by a team of 3 junior software engineers.
 
-| Member | Role | Commits |
+| Member | Role | Commits (incl. merges) |
 |--------|------|---------|
-| **Member A** | Backend setup, Auth, Security | 5 commits |
-| **Member B** | Payment APIs, Business Logic, Tests | 6 commits |
-| **Member C** | Frontend, Docker, CI/CD, Docs | 6 commits |
+| **Dhruv Sharma** | Lead & Backend — setup, Auth, Security, Docker, rollback/search features | 24 commits |
+| **Anu Sree** | Backend — Payment APIs, encryption, tests, password-change feature | 9 commits |
+| **Chaitanya** | Frontend, UI integration, payment list filters | 7 commits |
 
 ### Git History Context
 
 ```
-feat: init Spring Boot project with MySQL (Member A)
-feat: add JWT auth + BCrypt password encoder (Member A)
-feat: configure Spring Security, role-based access (Member A)
-feat: user registration & login REST APIs (Member A)
-fix: auth token expiration bug (Member A)
-feat: create Payment entity, enums & JPA repo (Member B)
-feat: payment CRUD endpoints + validation (Member B)
-feat: simulate processing, random success/failure (Member B)
-feat: retry endpoint + max-3 logic, rollback handling (Member B)
-feat: audit-trail entity + history tracking (Member B)
-test: service layer unit tests (~65% coverage) (Member B)
-feat: scaffold React + Vite + Tailwind (Member C)
-feat: login/register UI + auth context (Member C)
-feat: dashboard, create-payment form, list page (Member C)
-chore: Dockerfiles + docker-compose.yml (Member C)
-ci: GitHub Actions workflow (build, test, docker) (Member C)
-docs: README, mermaid diagrams, API tables (Member C)
+initial backend setup, added spring security and jwt (Dhruv Sharma)
+login and register api done with jwt working (Anu Sree)
+frontend setup done, login register pages added (Chaitanya)
+added all payment models and repositories (Dhruv Sharma)
+payment service and apis done, added encryption for account details (Anu Sree)
+all pages done and connected to backend (Chaitanya)
+added docker (Dhruv Sharma)
+added tests for auth and payment service (Anu Sree)
+Add deterministic failure simulation with automatic rollback and refund logging (Dhruv Sharma)
+Add payment search endpoint with status, amount range, and date range filters (Dhruv Sharma)
+Add isolated backend password change feature (Anu Sree)
+add agile sprint documentation and architectural specs (Dhruv Sharma)
+Add amount and date range filters to payment list page (Chaitanya)
+Rename com.flowpay to com.payflow, show rollback stages in payment history, add combined Docker image (Dhruv Sharma)
+Fix port config to 8081, rollback history display, package rename, add Docker files (Dhruv Sharma)
+Allow CORS origin http://localhost:8080 for SSH-tunneled frontend access (Dhruv Sharma)
 ```
+
+*(Condensed from full `git log`; merge commits and revert/re-apply commits omitted for readability.)*
+

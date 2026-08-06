@@ -1,4 +1,4 @@
-# FlowPay 💸
+# PayFlow 💸
 
 A full-stack payment processing system built as a 1-week Agile Sprint project (July 29 - August 6, 2026).
 
@@ -18,6 +18,9 @@ To ensure clarity and maintainability, our documentation is structured into the 
 - **[WORKFLOWS.md](./WORKFLOWS.md)**: Payment lifecycle state machines, retry/rollback logic, and authentication flows.
 - **[API_REFERENCE.md](./API_REFERENCE.md)**: Full REST API contract, endpoints, payload examples, and error codes.
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)**: Developer onboarding, project directory structure, team breakdown, and test execution.
+- **[AI_USAGE.md](./AI_USAGE.md)**: How Generative AI was used during our Agile sprint, and where the team deliberately relied on human judgment instead.
+- **[RISK_AND_COMPLIANCE.md](./RISK_AND_COMPLIANCE.md)**: OWASP Top 10 mapping, current mitigations, next-sprint security plans, and Indian regulatory considerations (demo-only disclaimer).
+- **[FUTURE_SPRINT_PLAN.md](./FUTURE_SPRINT_PLAN.md)**: Sprint 2 backlog in Scrum format — user stories, story points, DoD, and ceremony schedule for upcoming security hardening work.
 
 ---
 
@@ -41,8 +44,8 @@ To ensure clarity and maintainability, our documentation is structured into the 
 ### Run everything (one command)
 
 ```bash
-git clone https://github.com/your-team/flowpay.git
-cd flowpay
+git clone https://github.com/Neueda-Learning/114-PayFlow.git
+cd 114-PayFlow
 docker compose up --build
 ```
 
