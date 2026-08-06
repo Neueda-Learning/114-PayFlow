@@ -1,6 +1,6 @@
 # 🔄 Workflows & State Machines
 
-This document outlines the core business logic, lifecycle states, and security flows in FlowPay.
+This document outlines the core business logic, lifecycle states, and security flows in PayFlow.
 
 ## 🔐 Authentication Flow
 

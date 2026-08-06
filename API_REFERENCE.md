@@ -1,6 +1,6 @@
 # 📖 API Documentation
 
-This document serves as the contract for the REST APIs provided by the FlowPay backend.
+This document serves as the contract for the REST APIs provided by the PayFlow backend.
 
 ## Interactive Docs
 Swagger/OpenAPI UI is available at:
