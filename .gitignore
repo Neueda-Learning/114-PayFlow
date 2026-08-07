@@ -22,5 +22,6 @@ Thumbs.db
 # === Docker ===
 *.log
 
-# === Env overrides (keep .env committed for portability) ===
+# === Env (contains secrets - never commit) ===
+.env
 .env.local
